@@ -466,6 +466,44 @@ body.mobile .st-due{background:var(--m-chip)}
 .blg b{font-family:var(--mono);font-weight:700}
 body.mobile .ballbar{background:var(--m-paper)}
 
+/* ---- gantt ---- */
+.gantt{font-size:12px}
+.grow,.ghead{display:flex;align-items:center;gap:10px;padding:3px 0}
+.ghead{border-bottom:1px solid var(--grid);padding-bottom:7px;margin-bottom:6px}
+.grow{border-bottom:1px solid var(--grid);cursor:pointer}
+.grow:last-of-type{border-bottom:none}
+.grow:hover{background:var(--accent-soft)}
+.gantt .glab{width:210px;flex:none;font-size:11.5px;font-weight:600;line-height:1.25;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.gantt .glab i{display:block;font-style:normal;font-size:9.5px;font-weight:600;
+  letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+.gantt .gtrack{flex:1;position:relative;height:26px;min-width:180px}
+.gantt .gaxis{height:20px}
+.gantt .gl{position:absolute;top:0;bottom:0;border-left:1px solid var(--grid)}
+.gantt .gl.rest{background:var(--surface2)}
+body.mobile .gantt .gl.rest{background:var(--m-paper)}
+.gantt .gnow{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--accent);z-index:3}
+.gantt .gnowlab{position:absolute;top:2px;transform:translateX(-50%);font-size:9px;
+  font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+.gantt .gaxis span{position:absolute;top:5px;transform:translateX(-50%);font-family:var(--mono);
+  font-size:9px;color:var(--muted);white-space:nowrap}
+.gantt .gbar{position:absolute;top:6px;height:14px;border-radius:4px;z-index:2;
+  display:flex;align-items:center;padding:0 6px;overflow:hidden}
+.gantt .gbar b{font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  color:#fff;white-space:nowrap;opacity:.95}
+.gantt .gdia{position:absolute;top:9px;width:9px;height:9px;margin-left:-4.5px;
+  transform:rotate(45deg);z-index:4;border:1.5px solid var(--surface)}
+body.mobile .gantt .gdia{border-color:var(--m-card)}
+.g-done{background:#0f9d58}.g-late{background:#f0b429}.g-over{background:#d64545}
+.g-due{background:var(--accent)}.g-plan{background:var(--muted)}.g-none{background:#b9bfc7}
+.gantt .gdate{width:80px;flex:none;text-align:right;font-family:var(--mono);font-size:10.5px;
+  color:var(--muted)}
+@media(max-width:820px){
+  .gantt .glab{width:104px;font-size:11px}
+  .gantt .gdate{width:56px;font-size:9.5px}
+  .gantt .gbar b{display:none}
+}
+
 /* ---- printed report ---- */
 #printroot{display:none}
 @media screen{ body.printing #printroot{display:none} }
@@ -1836,6 +1874,7 @@ async function openPlans(){
             p.name?' · '+esc(p.name):''}</option>`).join('')||'<option>No plans yet</option>'}</select>
         <button class="btn" id="pnew"${canEdit()?'':' disabled'}>New week</button>
         <button class="btn" id="padd"${canEdit()&&current?'':' disabled'}>Add selected documents</button>
+        <button class="btn" id="pview">${PLAN_VIEW==='gantt'?'Table':'Gantt'}</button>
         <button class="btn" id="pedit"${canEdit()&&current?'':' disabled'}>Edit week</button>
         <button class="btn" id="pdel"${canEdit()&&current?'':' disabled'}>Delete plan</button>
         <button class="btn" id="ppdf"${current?'':' disabled'}>Export PDF</button>
@@ -1843,7 +1882,8 @@ async function openPlans(){
           esc(planPhase(plan).label)}</span> · `:''}${items.length} document(s)</span>
       </div>
       ${plan&&items.length?`<div class="panel">${progressBar(planProgress(current))}</div>`:''}
-      ${plan?`<div class="panel">${items.length?`
+      ${plan&&PLAN_VIEW==='gantt'?`<div class="panel">${ganttHTML(current)}</div>`:''}
+      ${plan&&PLAN_VIEW!=='gantt'?`<div class="panel">${items.length?`
         <table class="ptbl"><thead><tr><th>Document</th><th>Name</th><th>Discipline</th>
           <th>Responsible</th><th>Target</th><th>Progress</th><th>Code</th><th></th></tr></thead><tbody>
         ${items.map(it=>{const r=AB.find(a=>a.id===it.docId)||{};
@@ -1862,7 +1902,8 @@ async function openPlans(){
           </tr>`;}).join('')}
         </tbody></table>`
         :'<div class="empty"><b>Nothing planned for this week</b>Select documents in the register, then press “Add selected documents”.</div>'}
-      </div>`:'<div class="empty"><b>No plans yet</b>Press “New week” to start one.</div>'}
+      </div>`:''}
+      ${!plan?`<div class="empty"><b>No plans yet</b>Press “New week” to start one.</div>`:''}
       <div class="panel"><h3>Who can be given work</h3>
         <div class="alist">${ASSIGNEES.map(a=>`<span class="atag">${esc(a.name)}${
           a.role?`<i>${esc(a.role)}</i>`:''}</span>`).join('')||'<span class="hint">Nobody on the list yet.</span>'}
@@ -1906,6 +1947,10 @@ function wirePlan(draw){
         } finally { _planBusy=false; }
       },'primary']]);};
   if($('padd'))$('padd').onclick=()=>openPicker(PLAN_CUR,draw);
+  if($('pview'))$('pview').onclick=async()=>{PLAN_VIEW=PLAN_VIEW==='gantt'?'table':'gantt';await draw();};
+  w.body.querySelectorAll('.grow[data-pi]').forEach(el=>el.onclick=()=>{
+    const it=(PITEMS[PLAN_CUR]||[]).find(x=>x.id===+el.dataset.pi);
+    if(it)toast(assigneeName(it.assigneeId)+(it.targetDate?' · due '+it.targetDate:''));});
   if($('ppdf'))$('ppdf').onclick=()=>exportPlanPDF(PLAN_CUR);
   if($('pedit'))$('pedit').onclick=()=>{
     const p=PLANS.find(x=>x.id===PLAN_CUR); if(!p)return;
@@ -2065,6 +2110,77 @@ function openPicker(planId,draw){
     if(qi&&caret!=null){qi.focus();qi.setSelectionRange(caret,caret);}
   };
   wire();
+}
+
+
+/* ================= plan as a Gantt =================
+   One bar per document, running from the start of the plan week (or today,
+   whichever is later) to its target date, with the target marked. Colour
+   carries the state, so slippage is visible without reading a table. */
+let PLAN_VIEW='table';
+
+function ganttHTML(planId){
+  const plan=PLANS.find(p=>p.id===planId), items=PITEMS[planId]||[];
+  if(!plan||!items.length)
+    return '<div class="empty"><b>Nothing to chart</b>Add documents to the plan first.</div>';
+
+  const ws=plan.weekStart, we=weekEndOf(ws);
+  const dates=items.map(i=>i.targetDate).filter(Boolean);
+  const lo=[ws,...dates].sort()[0];
+  const hiRaw=[we,...dates,today].sort().pop();
+  const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x.toISOString().slice(0,10);};
+  const start=addDays(lo,-1), end=addDays(hiRaw,1);
+  const span=Math.max(1,days(start,end));
+  const pos=d=>Math.max(0,Math.min(100,days(start,d)/span*100));
+
+  // day columns, labelled every other day when the span is long
+  let grid='', labels='';
+  for(let i=0;i<=span;i++){
+    const d=addDays(start,i), x=i/span*100;
+    const dow=new Date(d).getDay();               // 5=Fri 6=Sat
+    const rest=(dow===5);                          // Friday is the day off
+    grid+=`<i class="gl${rest?' rest':''}" style="left:${x}%;width:${100/span}%"></i>`;
+    if(span<=10||i%2===0)
+      labels+=`<span style="left:${x}%">${new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short'})}</span>`;
+  }
+  const todayX=(today>=start&&today<=end)?pos(today):null;
+
+  const rows=items.map(it=>{
+    const r=AB.find(a=>a.id===(it.docId!=null?it.docId:it.asbuiltId))||{};
+    const st=itemState(it,plan);
+    const from=(ws>today?ws:today);
+    const to=it.targetDate||we;
+    const a=pos(from<to?from:to), b=pos(to);
+    const w=Math.max(1.2,b-a);
+    const cls={done:'g-done',late:'g-late',overdue:'g-over',due:'g-due',
+               nodate:'g-none',pending:'g-plan'}[st.k]||'g-due';
+    return `<div class="grow" data-pi="${it.id}">
+      <div class="glab" title="${esc(r.title||'')}">${esc(r.title||'—')}
+        <i>${esc(r.discipline||'')}${it.assigneeId?' · '+esc(assigneeName(it.assigneeId)):''}</i></div>
+      <div class="gtrack">
+        ${grid}
+        ${todayX!=null?`<i class="gnow" style="left:${todayX}%"></i>`:''}
+        <div class="gbar ${cls}" style="left:${a}%;width:${w}%">
+          <b>${esc(st.label)}</b></div>
+        ${it.targetDate?`<i class="gdia ${cls}" style="left:${b}%"
+           title="${esc(it.targetDate)}"></i>`:''}
+      </div>
+      <div class="gdate">${esc(it.targetDate||'—')}</div></div>`;}).join('');
+
+  return `<div class="gantt" data-chart="gantt">
+    <div class="ghead"><div class="glab"></div>
+      <div class="gtrack gaxis">${grid}${labels}
+        ${todayX!=null?`<i class="gnow" style="left:${todayX}%"></i>
+          <span class="gnowlab" style="left:${todayX}%">today</span>`:''}</div>
+      <div class="gdate">Target</div></div>
+    ${rows}
+    <div class="legend" style="margin-top:10px">
+      <span><i class="sw" style="background:#0f9d58"></i>Done</span>
+      <span><i class="sw" style="background:#f0b429"></i>Late</span>
+      <span><i class="sw" style="background:#d64545"></i>Overdue</span>
+      <span><i class="sw" style="background:var(--accent)"></i>Due</span>
+      <span><i class="sw" style="background:var(--muted)"></i>Planned</span>
+      <span class="rt">Fridays shaded</span></div></div>`;
 }
 
 function exportPlanPDF(planId){
@@ -2783,10 +2899,13 @@ function mobPlan(){
       ${progressBar(p)}</div>
     ${canEdit()?`<div class="mcount"><span class="n"><b>${items.length}</b> document(s) planned</span>
       <button id="mpadd">Add documents</button>
+      <button id="mpview">${PLAN_VIEW==='gantt'?'Cards':'Gantt'}</button>
       <button id="mpmore" aria-label="Manage this plan">⋯</button></div>`:
       `<div class="mcount"><span class="n"><b>${items.length}</b> document(s) planned</span></div>`}
-    ${items.length?`<div class="swipehint">Tap to edit · swipe left to remove</div>`+items.map(card).join('')
-      :'<div class="empty"><b>Nothing planned for this week</b>Add the documents you intend to issue.</div>'}`;
+    ${PLAN_VIEW==='gantt'&&items.length?`<div class="panel" style="overflow-x:auto">${ganttHTML(PLAN_CUR)}</div>`:''}
+    ${PLAN_VIEW!=='gantt'&&items.length?`<div class="swipehint">Tap to edit · swipe left to remove</div>`+items.map(card).join('')
+      :''}
+    ${items.length?'':'<div class="empty"><b>Nothing planned for this week</b>Add the documents you intend to issue.</div>'}`;
 }
 
 function mobPlanRemove(itemId){
@@ -2970,6 +3089,8 @@ function wireMob(){
   if(wk)wk.onchange=async()=>{PLAN_CUR=+wk.value;await loadPlanItems(PLAN_CUR);mobRender();};
   const pa=document.getElementById('mpadd');
   if(pa)pa.onclick=()=>openPicker(PLAN_CUR,async()=>{await loadPlanItems(PLAN_CUR);mobRender();});
+  const pv=document.getElementById('mpview');
+  if(pv)pv.onclick=()=>{PLAN_VIEW=PLAN_VIEW==='gantt'?'table':'gantt';mobRender();};
   const pm=document.getElementById('mpmore');
   if(pm)pm.onclick=()=>mobPlanManage();
   b.querySelectorAll('[data-pi]').forEach(el=>{
