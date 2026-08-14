@@ -743,7 +743,9 @@ body.mobile{overflow:hidden}
 .srow{display:flex;align-items:baseline;gap:14px;padding:10px 14px;
   border-bottom:1px solid var(--m-line2);font-size:13.5px}
 .srow:last-child{border-bottom:none}
-.srow .l{flex:none;width:104px;font-size:10px;font-weight:650;text-transform:uppercase;
+.srow .l i{display:block;font-style:normal;font-size:9.5px;font-weight:500;letter-spacing:.02em;
+  text-transform:none;color:var(--m-ink3);margin-top:2px}
+.srow .l{flex:none;width:118px;font-size:10px;font-weight:650;text-transform:uppercase;
   letter-spacing:.07em;color:var(--m-ink3);padding-top:2px}
 .srow .v{flex:1;text-align:right;color:var(--m-ink);word-break:break-word;font-weight:500}
 .srow .v.mono{font-family:var(--mono);font-size:12.5px;letter-spacing:-.01em}
@@ -899,7 +901,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-14 · v4';
+const BUILD='LOD 2026-08-14 · v5';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2900,10 +2902,19 @@ function mobOne(){
   const k=r.status||'Not Submitted', cls=k==='Not Submitted'?'N':k;
   const MONO={ref:1,reviewClass:1,status:1,plannedDate:1,issuedDate:1,respondedDate:1};
   const show=COLS.filter(c=>c.k!=='sn');
+  const HINT={plannedDate:"HESCO's committed date",issuedDate:'sent to Maaden',
+    respondedDate:'Maaden replied',daysHeld:'days in the current court'};
   const row=c=>{
+    // calculated columns are read-only and must show their computed value
+    if(c.calc||c.ro){
+      const cv=c.calc?c.calc(r):(r[c.k]??'');
+      return `<div class="srow">
+        <span class="l">${esc(c.t)}</span>
+        <span class="v ${MONO[c.k]?'mono':''} ${cv?'':'none'}">${esc(cv||'—')}</span></div>`;
+    }
     const v=r[c.k]??'';
     return `<div class="srow tap" data-me="${c.k}">
-      <span class="l">${esc(c.t)}</span>
+      <span class="l">${esc(c.t)}${HINT[c.k]?`<i>${HINT[c.k]}</i>`:''}</span>
       <span class="v ${MONO[c.k]?'mono':''} ${v?'':'none'}">${esc(v||'Not set')}</span></div>`;};
   return `<div class="dcard k-${cls}" style="animation:none;margin-bottom:11px;cursor:default">
       <div class="dc-h"><span class="dc-no">${esc(r.ref)}</span>
