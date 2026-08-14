@@ -841,15 +841,20 @@ const H=()=>({apikey:SB_KEY,Authorization:'Bearer '+(TOKEN||SB_KEY),'Content-Typ
 const XLSX_CDN='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
 const HOLDERS=['HESCO','AWPT',"Maaden",'Closed'];
-const STATUSES=['Code A','Deemed','Code B','Under review','Rejected','Issued to AWPT','Not issued'];
+const STATUSES=['Code A','Deemed','Code B','Under review','Rejected',
+  'RWC','Under AWPT review','Not issued'];
 const CREDIT={'Code A':100,'Deemed':100,'Code B':85,'Under review':50,
-  'Rejected':0,'Issued to AWPT':0,'Not issued':0};
+  'Rejected':0,'RWC':0,'Under AWPT review':0,'Not issued':0};
+const STATUS_LONG={'Code A':'Approved — Code A','Deemed':'Deemed approved (>10 wd)',
+  'Code B':'Approved with comments — Code B','Under review':'Issued, under review',
+  'Rejected':'Rejected','RWC':'Issued to AWPT — reviewed with comments',
+  'Under AWPT review':'Issued to AWPT — under AWPT review','Not issued':'Not yet issued'};
 const CLASSES=['IFI','IFR','AWPT-only'];
 const SCOPES=['Base','Optional'];
 const APPROVED=['Code A','Deemed','Code B'], REJECTED=['Rejected'];
 const CODES=STATUSES;
 const COLOR={'Code A':'#0f9d58','Deemed':'#4bb07a','Code B':'#6fc38a','Under review':'#f0b429',
-  'Rejected':'#d64545','Issued to AWPT':'#8c9aa8','Not issued':'#b9bfc7'};
+  'Rejected':'#d64545','RWC':'#7d8fa0','Under AWPT review':'#a7b2bd','Not issued':'#cbd2d8'};
 const HCOLOR={'HESCO':'#d64545','AWPT':'#f0b429',"Maaden":'#2a78d6','Closed':'#0f9d58'};
 const DISCS=['ARCH','Civil','Electric','General','ICT','ICT/Mech','Mech/ELC',
   'Mechanical','Process','Project Man','Structural'];
@@ -880,7 +885,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-14 · v1';
+const BUILD='LOD 2026-08-14 · v2';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2367,6 +2372,20 @@ function kpiHTML(){
 }
 
 /* ---------- ball in court ---------- */
+function classChart(){
+  const rows=CLASSES.map(c=>{
+    const all=AB.filter(r=>r.reviewClass===c), base=all.filter(inBase);
+    return {c,n:all.length,scored:base.length,
+      pct:base.length?Math.round(base.reduce((t,r)=>t+creditOf(r),0)/base.length*10)/10:0};});
+  const LABEL={'IFI':'IFI — issued for information','IFR':'IFR — issued for review',
+    'AWPT-only':'AWPT-only — BOQs and reviews'};
+  return `<div class="chart" data-chart="cls">${rows.map(x=>`
+    <div class="drow"><div class="dlab" title="${esc(LABEL[x.c]||x.c)}">${esc(x.c)}</div>
+      <div class="dtrack"><div class="dbar" style="width:${x.pct}%;background:var(--accent)"></div></div>
+      <div class="dn">${x.pct}%</div><div class="dp">${x.scored} docs</div></div>`).join('')}
+    <div class="hint" style="margin-top:8px">IFI is measured on the 10 working-day deemed-approval rule;
+      AWPT-only documents are measured on AWPT's review, not the Client's.</div></div>`;
+}
 function ballChart(){
   const s=stats(), rows=[['HESCO',s.hesco],['AWPT',s.awpt],["Maaden",s.maaden],['Closed',s.closed]];
   const tot=s.t||1;
@@ -2399,7 +2418,8 @@ function creditChart(){
       <thead><tr><th>Status</th><th style="text-align:right">Credit</th>
         <th style="text-align:right">Docs</th><th style="text-align:right">Earned</th></tr></thead><tbody>
       ${bands.map(b=>{const earned=stats().scored?(b.n*b.c/ (stats().scored*100)*100):0;
-        return `<tr><td><span class="pill" style="background:${COLOR[b.k]}22;color:${COLOR[b.k]}">${esc(b.k)}</span></td>
+        return `<tr><td><span class="pill" style="background:${COLOR[b.k]}22;color:${COLOR[b.k]}">${esc(b.k)}</span>
+          <div class="hint" style="font-size:10.5px">${esc(STATUS_LONG[b.k]||'')}</div></td>
         <td style="text-align:right">${b.c}%</td><td style="text-align:right">${b.n}</td>
         <td style="text-align:right">${earned.toFixed(1)}%</td></tr>`;}).join('')}
       </tbody></table></div>`;
@@ -2533,6 +2553,7 @@ function renderDash(){
     <div class="kpis">${kpiHTML()}</div>
     <div class="panel"><h3>Ball in court</h3>${ballChart()}</div>
     <div class="panel"><h3>Where the credit sits</h3>${creditChart()}</div>
+    <div class="panel"><h3>Progress by review class</h3>${classChart()}</div>
     <div class="g2">
       <div class="panel"><h3>Issued to the Client — cumulative</h3>${curveChart()}</div>
       <div class="panel"><h3>How long documents have been held</h3>${ageingChart()}</div>
@@ -2763,6 +2784,7 @@ function mobDash(){
       ${t('Closed',s.closed,'no action','#0f9d58',Math.round(s.closed/s.t*100))}</div>
     <div class="panel"><h3>Ball in court</h3>${ballChart()}</div>
     <div class="panel"><h3>Where the credit sits</h3>${creditChart()}</div>
+    <div class="panel"><h3>Progress by review class</h3>${classChart()}</div>
     <div class="panel"><h3>Held longest</h3>${ageingChart()}</div>
     <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div>`;
 }
