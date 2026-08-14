@@ -1950,7 +1950,7 @@ function wirePlan(draw){
   if($('pview'))$('pview').onclick=async()=>{PLAN_VIEW=PLAN_VIEW==='gantt'?'table':'gantt';await draw();};
   w.body.querySelectorAll('.grow[data-pi]').forEach(el=>el.onclick=()=>{
     const it=(PITEMS[PLAN_CUR]||[]).find(x=>x.id===+el.dataset.pi);
-    if(it)toast(assigneeName(it.assigneeId)+(it.targetDate?' · due '+it.targetDate:''));});
+    if(it)toast(assigneeName(it.assigneeId)+(it.plannedDate?' · due '+it.plannedDate:''));});
   if($('ppdf'))$('ppdf').onclick=()=>exportPlanPDF(PLAN_CUR);
   if($('pedit'))$('pedit').onclick=()=>{
     const p=PLANS.find(x=>x.id===PLAN_CUR); if(!p)return;
@@ -2125,7 +2125,7 @@ function ganttHTML(planId){
     return '<div class="empty"><b>Nothing to chart</b>Add documents to the plan first.</div>';
 
   const ws=plan.weekStart, we=weekEndOf(ws);
-  const dates=items.map(i=>i.targetDate).filter(Boolean);
+  const dates=items.map(i=>i.plannedDate).filter(Boolean);
   const lo=[ws,...dates].sort()[0];
   const hiRaw=[we,...dates,today].sort().pop();
   const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x.toISOString().slice(0,10);};
@@ -2149,7 +2149,7 @@ function ganttHTML(planId){
     const r=AB.find(a=>a.id===(it.docId!=null?it.docId:it.asbuiltId))||{};
     const st=itemState(it,plan);
     const from=(ws>today?ws:today);
-    const to=it.targetDate||we;
+    const to=it.plannedDate||we;
     const a=pos(from<to?from:to), b=pos(to);
     const w=Math.max(1.2,b-a);
     const cls={done:'g-done',late:'g-late',overdue:'g-over',due:'g-due',
@@ -2162,10 +2162,10 @@ function ganttHTML(planId){
         ${todayX!=null?`<i class="gnow" style="left:${todayX}%"></i>`:''}
         <div class="gbar ${cls}" style="left:${a}%;width:${w}%">
           <b>${esc(st.label)}</b></div>
-        ${it.targetDate?`<i class="gdia ${cls}" style="left:${b}%"
-           title="${esc(it.targetDate)}"></i>`:''}
+        ${it.plannedDate?`<i class="gdia ${cls}" style="left:${b}%"
+           title="${esc(it.plannedDate)}"></i>`:''}
       </div>
-      <div class="gdate">${esc(it.targetDate||'—')}</div></div>`;}).join('');
+      <div class="gdate">${esc(it.plannedDate||'—')}</div></div>`;}).join('');
 
   return `<div class="gantt" data-chart="gantt">
     <div class="ghead"><div class="glab"></div>
