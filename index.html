@@ -885,7 +885,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-14 · v2';
+const BUILD='LOD 2026-08-14 · v3';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2379,10 +2379,10 @@ function classChart(){
       pct:base.length?Math.round(base.reduce((t,r)=>t+creditOf(r),0)/base.length*10)/10:0};});
   const LABEL={'IFI':'IFI — issued for information','IFR':'IFR — issued for review',
     'AWPT-only':'AWPT-only — BOQs and reviews'};
-  return `<div class="chart" data-chart="cls">${rows.map(x=>`
+  return `<div class="chart dbars" data-chart="cls">${rows.map(x=>`
     <div class="drow"><div class="dlab" title="${esc(LABEL[x.c]||x.c)}">${esc(x.c)}</div>
       <div class="dtrack"><div class="dbar" style="width:${x.pct}%;background:var(--accent)"></div></div>
-      <div class="dn">${x.pct}%</div><div class="dp">${x.scored} docs</div></div>`).join('')}
+      <div class="dn">${x.pct}%</div><div class="dp">${x.scored} doc${x.scored===1?'':'s'}</div></div>`).join('')}
     <div class="hint" style="margin-top:8px">IFI is measured on the 10 working-day deemed-approval rule;
       AWPT-only documents are measured on AWPT's review, not the Client's.</div></div>`;
 }
