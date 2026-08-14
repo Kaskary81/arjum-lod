@@ -887,7 +887,9 @@ const COLS=[
      calc:r=>(CREDIT[r.status]!=null?CREDIT[r.status]:0)+'%'},
   {k:'holder',       t:'Ball in court',w:104, cls:'ctr', opts:()=>HOLDERS},
   {k:'action',       t:'Action required',w:230},
-  {k:'daysHeld',     t:'Days',         w:60,  cls:'num'},
+  {k:'heldSince',    t:'In court since', w:110, date:1},
+  {k:'daysHeld',     t:'Days',         w:60,  ro:1, cls:'num',
+     calc:r=>{const d=heldDays(r);return d==null?'':d+(r.heldSince?'':'*');}},
   {k:'plannedDate',  t:'Planned',      w:100, date:1},
   {k:'issuedDate',   t:'Issued',       w:100, date:1},
   {k:'respondedDate',t:'Responded',    w:100, date:1},
@@ -901,7 +903,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-14 · v5';
+const BUILD='LOD 2026-08-14 · v6';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1179,8 +1181,7 @@ function gridRows(){
     if(GRID.fx==='ur'&&r.status!=='Under review')return false;
     if(GRID.fx==='late'&&!(!APPROVED.includes(r.status)&&r.plannedDate&&r.plannedDate<today))return false;
     if(GRID.fx==='ns'&&r.status!=='Not issued')return false;
-    if(GRID.fage){ if(r.holder==='Closed'||r.daysHeld==null)return false;
-      const a=+r.daysHeld;
+    if(GRID.fage){ const a=heldDays(r); if(a==null)return false;
       if(a<GRID.fage[0]||a>GRID.fage[1])return false; }
     return true;
   });
@@ -2362,6 +2363,13 @@ function drillTo(f){
 }
 
 const creditOf=r=>(CREDIT[r.status]!=null?CREDIT[r.status]:0);
+/* Days in the current court, counted live from the date that party received it.
+   Falls back to the imported figure only where no start date is known. */
+function heldDays(r){
+  if(r.holder==='Closed')return null;
+  if(r.heldSince)return days(r.heldSince,today);
+  return (r.daysHeld==null||r.daysHeld==='')?null:+r.daysHeld;
+}
 const inBase=r=>r.inProgressBase!==false;
 function stats(){
   const base=AB.filter(inBase);
@@ -2478,8 +2486,8 @@ function wireDonut(root){
 }
 /* how long things have been sitting, by holder */
 function ageingChart(){
-  const held=AB.filter(r=>r.holder!=='Closed'&&r.daysHeld!=null)
-    .map(r=>({...r,age:+r.daysHeld})).sort((a,b)=>b.age-a.age);
+  const held=AB.filter(r=>heldDays(r)!=null)
+    .map(r=>({...r,age:heldDays(r)})).sort((a,b)=>b.age-a.age);
   if(!held.length)return '<div class="empty">Nothing is being held.</div>';
   const B=[['0–14 days',0,14,'#0f9d58'],['15–30 days',15,30,'#f0b429'],
            ['31–60 days',31,60,'#e8834a'],['Over 60 days',61,1e9,'#d64545']];
@@ -2492,6 +2500,7 @@ function ageingChart(){
         <div class="btrack"><i style="width:${counts[i]/max*100}%;background:${col}"></i></div>
         <div class="bn">${counts[i]}</div></div>`).join('')}
     <div class="legend"><span>Longest <b>${held[0].age}d</b></span>
+      <span>counted to today</span>
       <span class="rt">${esc(held[0].title.slice(0,42))}</span></div></div>`;
 }
 function wireAge(root){
@@ -2834,8 +2843,7 @@ function mobRows(){
     if(MOB.f==='ns'&&r.status!=='Not issued')return false;
     if(MOB.fs&&(r.status||'Not Submitted')!==MOB.fs)return false;
     if(MOB.fd&&r.discipline!==MOB.fd)return false;
-    if(MOB.fage){ if(r.holder==='Closed'||r.daysHeld==null)return false;
-      const a=+r.daysHeld;
+    if(MOB.fage){ const a=heldDays(r); if(a==null)return false;
       if(a<MOB.fage[0]||a>MOB.fage[1])return false; }
     if(MOB.f==='late'&&!(r.holder!=='Closed'&&r.plannedDate&&r.plannedDate<today))return false;
     return true;});
@@ -2853,7 +2861,7 @@ function card(r,i){
   }
   const k=r.status||'Not issued';
   const late=(r.holder!=='Closed'&&r.plannedDate&&r.plannedDate<today)?days(r.plannedDate,today):0;
-  const out=(r.holder!=='Closed'&&r.daysHeld!=null)?+r.daysHeld:0;
+  const out=heldDays(r)||0;
   const meta=[r.discipline||'—'];
   if(r.reviewClass)meta.push('<span class="rev">'+esc(r.reviewClass)+'</span>');
   if(r.scope==='Optional')meta.push('Optional');
@@ -2903,7 +2911,8 @@ function mobOne(){
   const MONO={ref:1,reviewClass:1,status:1,plannedDate:1,issuedDate:1,respondedDate:1};
   const show=COLS.filter(c=>c.k!=='sn');
   const HINT={plannedDate:"HESCO's committed date",issuedDate:'sent to Maaden',
-    respondedDate:'Maaden replied',daysHeld:'days in the current court'};
+    respondedDate:'Maaden replied',heldSince:'date the current holder received it',
+    daysHeld:'counted from “in court since”, updates daily'};
   const row=c=>{
     // calculated columns are read-only and must show their computed value
     if(c.calc||c.ro){
