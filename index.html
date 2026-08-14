@@ -504,6 +504,19 @@ body.mobile .gantt .gdia{border-color:var(--m-card)}
   .gantt .gbar b{display:none}
 }
 
+.legblock{margin-bottom:14px}
+.legblock h5{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:7px;display:flex;gap:9px;align-items:baseline;flex-wrap:wrap}
+.legblock h5 span{font-size:10px;font-weight:600;letter-spacing:.03em;text-transform:none;color:var(--muted)}
+table.histtbl{width:100%;border-collapse:collapse;font-size:12px}
+table.histtbl th{text-align:left;font-size:9.5px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted);padding:4px 6px;border-bottom:1px solid var(--grid)}
+table.histtbl td{padding:4px 6px;border-bottom:1px solid var(--grid)}
+table.histtbl tr:last-child td{border-bottom:none}
+table.histtbl .mono{font-family:var(--mono);font-size:11px}
+body.mobile table.histtbl{font-size:11.5px}
+body.mobile table.histtbl th:nth-child(4),body.mobile table.histtbl td:nth-child(4){display:none}
+
 /* ---- printed report ---- */
 #printroot{display:none}
 @media screen{ body.printing #printroot{display:none} }
@@ -862,7 +875,8 @@ const DISCS=['ARCH','Civil','Electric','General','ICT','ICT/Mech','Mech/ELC',
 /* column model — the full agreed as-built set */
 const COLS=[
   {k:'sn',           t:'#',            w:44,  ro:1, cls:'num'},
-  {k:'title',        t:'Document',     w:330},
+  {k:'docNumber',    t:'Document number', w:230, cls:'mono'},
+  {k:'title',        t:'Document',     w:300},
   {k:'discipline',   t:'Discipline',   w:130, opts:()=>DISCS},
   {k:'reviewClass',  t:'Class',        w:88,  cls:'ctr', opts:()=>CLASSES},
   {k:'scope',        t:'Scope',        w:86,  cls:'ctr', opts:()=>SCOPES},
@@ -885,7 +899,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-14 · v3';
+const BUILD='LOD 2026-08-14 · v4';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1213,6 +1227,7 @@ function renderGrid(){
     <button class="btn" id="gadd"${canEdit()?'':' disabled'}>Add document</button>
     <button class="btn" id="gdel"${canEdit()?'':' disabled'}>Delete selected</button>
     <button class="btn" id="gplan"${canEdit()?'':' disabled'}>Add to plan</button>
+    <button class="btn" id="ghist2">History</button>
     <button class="btn" id="gtalk">Discussion</button>
     <button class="btn" id="gpdf">Export PDF</button>
     <button class="btn" id="ghist">History</button>
@@ -1257,6 +1272,13 @@ function wireGrid(){
     const c=$('gclr'); if(c)c.onclick=()=>{PICKED.clear();renderGrid();};});
   if($('gclr'))$('gclr').onclick=()=>{PICKED.clear();renderGrid();};
   $('gplan').onclick=()=>addPickedToPlan();
+  $('ghist2').onclick=()=>{const r=GRID.rows[GRID.cur.r];
+    if(!r)return toast('Pick a row first');
+    const w=[...WINS.values()].find(x=>x.kind==='hist')||
+      createWindow('hist','Submission history','',null,null,660,520);
+    w.el.querySelector('.wt').innerHTML=esc(r.ref)+'<small>'+esc(r.title)+'</small>';
+    w.body.innerHTML='<div class="dash"><div class="panel">'+historyHTML(r)+'</div></div>';
+    focusWin(w.id);};
   $('gtalk').onclick=()=>{const r=GRID.rows[GRID.cur.r];
     if(r)openDiscussion(r); else toast('Pick a row first');};
   $('ghist').onclick=()=>{const r=GRID.rows[GRID.cur.r];if(r)openHistory(r);else toast('Pick a row first');};
@@ -1534,7 +1556,7 @@ function openCols(){
    Anyone signed in can read and post; you can edit or remove your own,
    an admin can remove anything. */
 
-let CMTS={}, MEMBERS=[];                       // docId -> [comment]
+let CMTS={}, MEMBERS=[], HIST={};                       // docId -> [comment]
 async function loadComments(id){
   try{
     const list=await api('lod_comments?docId=eq.'+id+'&deletedAt=is.null&order=createdAt.asc');
@@ -2888,6 +2910,8 @@ function mobOne(){
         <span class="dc-code">${esc(cls==='N'?'—':k)}</span></div>
       <h3 class="dc-t" style="-webkit-line-clamp:4">${esc(r.title)}</h3></div>
     <div class="spec"><h4>Details</h4>${show.map(row).join('')}</div>
+    <div class="spec"><h4>Submission history</h4>
+      <div style="padding:12px 14px">${historyHTML(r)}</div></div>
     <div class="spec"><h4>Discussion${CCOUNT[r.id]?' ('+CCOUNT[r.id]+')':''}</h4>
       <div style="padding:12px 14px" id="mdisc">${commentsHTML(r.id)}${composerHTML(r.id)}</div></div>
     ${canEdit()?`<button class="btn danger" id="mdel"
@@ -3331,12 +3355,41 @@ function touchSeen(){
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden)touchSeen(); });
 async function loadRevs(){
   try{
+    const h=await api('lod_history?order=leg.asc,rev.asc,submitted.asc&limit=5000');
+    HIST={}; h.forEach(x=>{ (HIST[x.docId]=HIST[x.docId]||[]).push(x); });
+  }catch(e){ HIST={}; }
+}
+async function _oldLoadRevs(){
+  try{
     const r=await api('lod_revisions?order=id.asc&limit=5000');
     REVS={}; r.forEach(x=>{ (REVS[x.docId]=REVS[x.docId]||[]).push(x); });
   }catch(e){ REVS={}; }
 }
 function revsOf(id){ return REVS[id]||[]; }
 function historyHTML(r){
+  const all=(HIST[r.id]||[]);
+  if(!all.length)return '<div class="empty">No submission history recorded.</div>';
+  const leg=(name,rows,label,who)=>{
+    if(!rows.length)return '';
+    const closed=rows.filter(x=>x.days!=null);
+    const avg=closed.length?Math.round(closed.reduce((t,x)=>t+x.days,0)/closed.length):null;
+    return `<div class="legblock"><h5>${label}<span>${rows.length} submission${rows.length===1?'':'s'}${
+        avg!=null?' · '+avg+' days average':''}</span></h5>
+      <table class="histtbl"><thead><tr><th>Rev</th><th>Sent</th><th>${who}</th>
+        <th>Outcome</th><th style="text-align:right">Days</th></tr></thead><tbody>
+      ${rows.map(x=>`<tr>
+        <td class="mono">${esc(x.rev)}</td>
+        <td class="mono">${esc(x.submitted)||'—'}</td>
+        <td class="mono">${esc(x.responded)||'<span class="hint">awaiting</span>'}</td>
+        <td>${x.status?esc(x.status):'<span class="hint">—</span>'}</td>
+        <td style="text-align:right" class="mono">${x.days!=null?x.days:
+          (x.submitted&&!x.responded?days(x.submitted,today)+'<span class="hint">+</span>':'—')}</td>
+      </tr>`).join('')}</tbody></table></div>`;};
+  return leg('HESCO',all.filter(x=>x.leg==='HESCO'),'HESCO → AWPT','AWPT replied')+
+         leg('Maaden',all.filter(x=>x.leg==='Maaden'),'AWPT → Maaden','Maaden replied')+
+         `<div class="hint" style="margin-top:7px">HESCO cycles from the LOD · Maaden cycles from the submittal log</div>`;
+}
+function _oldHistoryHTML(r){
   const list=revsOf(r.id);
   if(!list.length)return '<div class="empty">Not submitted yet — no history.</div>';
   return `<table style="width:100%;border-collapse:collapse;font-size:12px">
