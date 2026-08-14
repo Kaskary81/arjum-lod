@@ -887,6 +887,8 @@ const COLS=[
      calc:r=>(CREDIT[r.status]!=null?CREDIT[r.status]:0)+'%'},
   {k:'holder',       t:'Ball in court',w:104, cls:'ctr', opts:()=>HOLDERS},
   {k:'action',       t:'Action required',w:230},
+  {k:'reviewDays',   t:'Review wd',    w:86,  ro:1, cls:'num',
+     calc:r=>{const c=reviewClock(r);return c?c.used+' / '+c.limit:'';}},
   {k:'heldSince',    t:'In court since', w:110, date:1},
   {k:'daysHeld',     t:'Days',         w:60,  ro:1, cls:'num',
      calc:r=>{const d=heldDays(r);return d==null?'':d+(r.heldSince?'':'*');}},
@@ -903,7 +905,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-14 · v6';
+const BUILD='LOD 2026-08-15 · v7';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -946,7 +948,22 @@ async function auth(path,body){
   if(!r.ok)throw new Error(j.error_description||j.msg||j.message||'Sign-in failed');
   return j;
 }
-async function apiUpdate(id,patch){ if(LIVE) await api('lod_docs?id=eq.'+id,{method:'PATCH',body:JSON.stringify(patch)}); }
+/* Writes carry the row version we loaded. If someone else has saved since,
+   nothing matches, no rows come back, and we tell the user instead of
+   silently overwriting their colleague's work. */
+class StaleRow extends Error{ constructor(cur){ super('stale'); this.cur=cur; } }
+async function apiUpdate(id,patch){
+  if(!LIVE)return;
+  const row=AB.find(x=>x.id===id);
+  const guard=(row&&row.ver!=null)?'&ver=eq.'+row.ver:'';
+  const res=await api('lod_docs?id=eq.'+id+guard,
+    {method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(patch)});
+  if(Array.isArray(res)&&res.length===0&&guard){
+    let cur=null; try{ cur=(await api('lod_docs?id=eq.'+id+'&limit=1'))[0]; }catch(e){}
+    throw new StaleRow(cur);
+  }
+  if(Array.isArray(res)&&res[0]&&row)Object.assign(row,res[0]);
+}
 async function apiInsert(row){ const r=await api('lod_docs',{method:'POST',
   headers:{Prefer:'return=representation'},body:JSON.stringify(row)}); return r[0]; }
 async function apiDelete(id){ if(LIVE) await api('lod_docs?id=eq.'+id,{method:'DELETE'}); }
@@ -1006,7 +1023,21 @@ async function setCell(row,k,val,silent){
   row[k]=val;
   txPush({t:'set',id:row.id,k,from:before,to:val});
   try{ await apiUpdate(row.id,{[k]:val}); await logAct('edit',row,k,before,val); }
-  catch(e){ row[k]=before; toast('Not saved — check your connection'); console.error(e); return; }
+  catch(e){
+    row[k]=before;
+    if(e instanceof StaleRow){
+      const col=COLBY[k], cur=e.cur;
+      if(cur)Object.assign(row,cur);
+      msgBox('Someone else changed this document','',
+        `<b>${esc(row.title)}</b><br><br>
+         ${esc((cur&&cur.updatedBy)||'Another user')} saved a change while you had this open,
+         so yours was not written.<br><br>
+         <b>${esc(col?col.t:k)}</b> now reads <b>${esc((cur?cur[k]:'')||'(blank)')}</b> —
+         you typed <b>${esc(val||'(blank)')}</b>.<br><br>
+         Their version is on screen now. Make your change again if it still applies.`,
+        [['OK',null,'primary']]);
+    } else toast('Not saved — check your connection');
+    console.error(e); refresh(); return; }
   if(!silent){ await loadRevs(); refresh(); }
 }
 
@@ -1181,6 +1212,7 @@ function gridRows(){
     if(GRID.fx==='ur'&&r.status!=='Under review')return false;
     if(GRID.fx==='late'&&!(!APPROVED.includes(r.status)&&r.plannedDate&&r.plannedDate<today))return false;
     if(GRID.fx==='ns'&&r.status!=='Not issued')return false;
+    if(GRID.fx==='win'){const c=reviewClock(r);if(!c||c.over<=0)return false;}
     if(GRID.fage){ const a=heldDays(r); if(a==null)return false;
       if(a<GRID.fage[0]||a>GRID.fage[1])return false; }
     return true;
@@ -1226,6 +1258,7 @@ function renderGrid(){
       <option value="ur"${GRID.fx==='ur'?' selected':''}>Under review</option>
       <option value="late"${GRID.fx==='late'?' selected':''}>Past target</option>
       <option value="ns"${GRID.fx==='ns'?' selected':''}>Not issued</option>
+      <option value="win"${GRID.fx==='win'?' selected':''}>Past the review window</option>
     </select>
     <button class="btn" id="gadd"${canEdit()?'':' disabled'}>Add document</button>
     <button class="btn" id="gdel"${canEdit()?'':' disabled'}>Delete selected</button>
@@ -2245,6 +2278,163 @@ function exportPlanPDF(planId){
   toast('Set Landscape, then Save as PDF');
 }
 
+
+/* ================= review clock =================
+   The Client's review window is counted in working days, Sunday to Thursday.
+   An IFI document with no response inside 10 working days is deemed approved;
+   IFR carries a 3 working-day target. Both are computed live from the date the
+   document was issued, so the escalation list writes itself. */
+const WD_START=0, WD_END=4;                 // Sun..Thu are working days
+function workingDays(from,to){
+  if(!from||!to)return null;
+  const a=new Date(from), b=new Date(to);
+  if(isNaN(a)||isNaN(b)||b<a)return null;
+  let n=0; const d=new Date(a);
+  d.setDate(d.getDate()+1);                 // the day of issue does not count
+  while(d<=b){ const w=d.getDay(); if(w>=WD_START&&w<=WD_END)n++; d.setDate(d.getDate()+1); }
+  return n;
+}
+const WINDOW={'IFI':10,'IFR':3,'AWPT-only':3};
+function reviewClock(r){
+  if(r.status!=='Under review')return null;
+  const from=r.issuedDate||r.heldSince;
+  if(!from)return null;
+  const used=workingDays(from,today);
+  if(used==null)return null;
+  const limit=WINDOW[r.reviewClass]||10;
+  const over=used-limit;
+  return {used,limit,over,from,
+    k: over>0 ? (r.reviewClass==='IFI'?'deemed':'overdue') : (over>=-1?'due':'ok'),
+    label: over>0 ? (r.reviewClass==='IFI'
+              ? 'Deemed approved — '+over+' wd past the 10-day window'
+              : over+' wd past the '+limit+'-day window')
+            : (limit-used)+' wd left'};
+}
+function clockHTML(){
+  const rows=AB.map(r=>({r,c:reviewClock(r)})).filter(x=>x.c)
+    .sort((a,b)=>b.c.over-a.c.over);
+  if(!rows.length)return '<div class="empty">Nothing is with a reviewer.</div>';
+  const past=rows.filter(x=>x.c.over>0), deemed=past.filter(x=>x.c.k==='deemed');
+  return `<div class="chart" data-chart="clock">
+    <div class="pgnum" style="margin-bottom:10px"><b>${past.length}</b>
+      <span>past their review window${deemed.length?' · '+deemed.length+' IFI now deemed approved':''}</span></div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr><th>Document</th><th>Class</th><th>Issued</th>
+        <th style="text-align:right">Working days</th><th>Position</th></tr></thead><tbody>
+      ${rows.slice(0,25).map(({r,c})=>`<tr data-go="${r.id}" style="cursor:pointer">
+        <td>${esc(r.title)}</td>
+        <td class="ctr">${esc(r.reviewClass)}</td>
+        <td class="mono">${esc(c.from)}</td>
+        <td style="text-align:right" class="mono">${c.used} <span class="hint">/ ${c.limit}</span></td>
+        <td><span class="pstate ${c.k==='deemed'?'st-done':c.k==='overdue'?'st-over':
+             c.k==='due'?'st-late':'st-due'}">${esc(c.label)}</span></td></tr>`).join('')}
+    </tbody></table>
+    ${rows.length>25?`<div class="hint" style="margin-top:7px">Showing 25 of ${rows.length}.</div>`:''}
+    <div class="hint" style="margin-top:8px">Working days counted Sunday to Thursday, from the day after issue.
+      IFI is deemed approved after 10; IFR carries a 3-day target.</div></div>`;
+}
+function wireClock(root){
+  root.querySelectorAll('[data-go]').forEach(el=>el.onclick=()=>{
+    const r=AB.find(x=>x.id===+el.dataset.go);
+    if(r&&MOBILE){MOB.stack=[];mobGo('one',r.id);} else if(r)openDiscussion(r);});
+}
+function exportEscalation(){
+  const rows=AB.map(r=>({r,c:reviewClock(r)})).filter(x=>x.c&&x.c.over>0)
+    .sort((a,b)=>b.c.over-a.c.over);
+  if(!rows.length)return toast('Nothing is past its review window');
+  let root=document.getElementById('printroot');
+  if(!root){root=document.createElement('div');root.id='printroot';document.body.appendChild(root);}
+  const stamp=new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
+  root.innerHTML=`<div class="rhead">
+      <div class="rt"><h1>Taif Ar Rjum Package B — Overdue Reviews</h1>
+        <div class="rs">Documents past the agreed review window</div></div>
+      <div class="rd">${stamp}<br><span>${rows.length} document${rows.length===1?'':'s'}</span></div></div>
+    <table class="rtbl"><thead><tr><th class="c-idx">#</th><th class="c-docNo">Document number</th>
+      <th class="c-title">Document</th><th class="c-discipline">Discipline</th>
+      <th class="c-status">Class</th><th class="c-targetDate">Issued</th>
+      <th class="c-actualSub">Working days</th></tr></thead><tbody>
+      ${rows.map(({r,c},i)=>`<tr><td class="c-idx">${i+1}</td>
+        <td class="c-docNo">${esc(r.docNumber||r.ref)}</td>
+        <td class="c-title">${esc(r.title)}</td>
+        <td class="c-discipline">${esc(r.discipline)}</td>
+        <td class="c-status">${esc(r.reviewClass)}</td>
+        <td class="c-targetDate">${esc(c.from)}</td>
+        <td class="c-actualSub" style="text-align:center">${c.used} of ${c.limit}${
+          c.k==='deemed'?' — deemed':''}</td></tr>`).join('')}</tbody></table>
+    <div class="rfoot">Working days counted Sunday to Thursday. IFI documents with no response within
+      10 working days are deemed approved under the agreed procedure. · ${stamp}${
+      USER?' · issued by '+esc(USER.name):''}</div>`;
+  document.body.classList.add('printing');
+  const done=()=>{document.body.classList.remove('printing');window.removeEventListener('afterprint',done);};
+  window.addEventListener('afterprint',done);
+  setTimeout(()=>{window.print();setTimeout(done,1500);},60);
+  toast(rows.length+' documents — set Landscape, then Save as PDF');
+}
+
+/* ================= progress over time ================= */
+let SNAPS=[];
+async function loadSnaps(){
+  try{ SNAPS=await api('lod_snapshots?order=takenOn.asc&limit=400'); }catch(e){ SNAPS=[]; }
+}
+async function takeSnapshot(){
+  if(!canEdit())return toast('Your account cannot record a snapshot');
+  try{
+    await fetch(SB_URL+'/rest/v1/rpc/lod_take_snapshot',
+      {method:'POST',headers:H(),body:JSON.stringify({p_note:''})});
+    await loadSnaps(); refresh(); toast('Snapshot recorded for today');
+  }catch(e){ toast('Could not record the snapshot'); }
+}
+function trendHTML(){
+  if(SNAPS.length<2)
+    return `<div class="empty"><b>${SNAPS.length?'One snapshot so far':'No snapshots yet'}</b>
+      Record one each week and the curve builds itself.</div>`;
+  const W=920,H=210,PL=40,PR=16,PT=14,PB=28;
+  const vals=SNAPS.map(s=>+s.pct||0);
+  const max=Math.min(100,Math.max(20,Math.ceil(Math.max(...vals)/10)*10+10));
+  const X=i=>PL+(W-PL-PR)*(SNAPS.length<2?.5:i/(SNAPS.length-1));
+  const Y=v=>H-PB-(H-PT-PB)*(v/max);
+  const line=k=>SNAPS.map((s,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(+s[k]||0).toFixed(1)).join(' ');
+  let g='';
+  for(let i=0;i<=4;i++){const v=max*i/4;
+    g+=`<line class="gl" x1="${PL}" y1="${Y(v)}" x2="${W-PR}" y2="${Y(v)}"/>
+        <text class="ax" x="${PL-8}" y="${Y(v)+3.5}" text-anchor="end">${Math.round(v)}%</text>`;}
+  SNAPS.forEach((s,i)=>{const step=Math.ceil(SNAPS.length/8);
+    if(SNAPS.length<10||i%step===0)
+      g+=`<text class="ax" x="${X(i)}" y="${H-10}" text-anchor="middle">${esc(s.takenOn.slice(5))}</text>`;});
+  const last=SNAPS[SNAPS.length-1], prev=SNAPS[SNAPS.length-2];
+  const move=(+last.pct-+prev.pct).toFixed(1);
+  return `<div class="chart plot" data-chart="trend">
+    <div class="pgnum" style="margin-bottom:8px"><b>${(+last.pct).toFixed(1)}%</b>
+      <span>${move>=0?'up':'down'} ${Math.abs(move)} points since ${esc(prev.takenOn)}</span></div>
+    <svg viewBox="0 0 ${W} ${H}" class="plotsvg">${g}
+      <path class="ln pln" d="${line('optPct')}"/>
+      <path class="ln ret" d="${line('basePct')}"/>
+      <path class="ln act" d="${line('pct')}"/>
+      <g class="pts">${SNAPS.map((s,i)=>`<circle cx="${X(i)}" cy="${Y(+s.pct||0)}" r="3"/>`).join('')}</g></svg>
+    <div class="legend"><span><i class="sw act"></i>Overall</span>
+      <span><i class="sw ret"></i>Base</span><span><i class="sw pln"></i>Optional</span>
+      <span class="rt">${SNAPS.length} snapshots</span></div></div>`;
+}
+
+/* ================= needs attention ================= */
+let ATTN=[];
+async function loadAttention(){
+  try{ ATTN=(await api('lod_attention?issue=not.is.null&order=issue.asc')); }catch(e){ ATTN=[]; }
+}
+function attentionHTML(){
+  if(!ATTN.length)return '<div class="empty">Nothing needs attention — the register reconciles.</div>';
+  const byIssue={}; ATTN.forEach(a=>{(byIssue[a.issue]=byIssue[a.issue]||[]).push(a);});
+  return `<div class="chart" data-chart="attn">${Object.entries(byIssue).map(([issue,list])=>`
+    <div class="legblock"><h5>${esc(issue)}<span>${list.length} document${list.length===1?'':'s'}</span></h5>
+      <table class="histtbl"><tbody>${list.slice(0,12).map(a=>`
+        <tr data-go="${a.id}" style="cursor:pointer"><td class="mono">${esc(a.docNumber||a.ref)}</td>
+          <td>${esc(a.title)}</td><td class="hint">${esc(a.holder)}</td></tr>`).join('')}
+      ${list.length>12?`<tr><td colspan="3" class="hint">and ${list.length-12} more</td></tr>`:''}
+      </tbody></table></div>`).join('')}
+    <div class="hint">These are gaps between the register and the two source spreadsheets.
+      Fixing one removes it from this list.</div></div>`;
+}
+
 /* ================= PDF report =================
    Rendered as a print stylesheet rather than a PDF library, so it needs no
    CDN, keeps the exact layout, and works on a phone (Share → Save to Files)
@@ -2584,6 +2774,14 @@ function renderDash(){
   const w=[...WINS.values()].find(x=>x.kind==='dash'); if(!w)return;
   w.body.innerHTML=`<div class="dash">
     <div class="kpis">${kpiHTML()}</div>
+    <div class="panel"><h3>Review clock — Client and AWPT</h3>${clockHTML()}
+      <div class="planbar" style="margin-top:10px">
+        <button class="btn" id="descal">Export the overdue list</button></div></div>
+    <div class="panel"><h3>Progress over time</h3>${trendHTML()}
+      <div class="planbar" style="margin-top:10px">
+        <button class="btn" id="dsnap"${canEdit()?'':' disabled'}>Record today's snapshot</button></div></div>
+    <div class="panel"><h3>Review clock</h3>${clockHTML()}</div>
+    <div class="panel"><h3>Progress over time</h3>${trendHTML()}</div>
     <div class="panel"><h3>Ball in court</h3>${ballChart()}</div>
     <div class="panel"><h3>Where the credit sits</h3>${creditChart()}</div>
     <div class="panel"><h3>Progress by review class</h3>${classChart()}</div>
@@ -2592,8 +2790,11 @@ function renderDash(){
       <div class="panel"><h3>How long documents have been held</h3>${ageingChart()}</div>
     </div>
     <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div>
-    <div class="panel"><h3>Past their planned submission date</h3>${overdueHTML(20)}</div></div>`;
-  wireCharts(w.body);
+    <div class="panel"><h3>Past their planned submission date</h3>${overdueHTML(20)}</div>
+    <div class="panel"><h3>Needs attention</h3>${attentionHTML()}</div></div>`;
+  wireCharts(w.body); wireClock(w.body);
+  const es=w.body.querySelector('#descal'); if(es)es.onclick=exportEscalation;
+  const sn=w.body.querySelector('#dsnap'); if(sn)sn.onclick=takeSnapshot;
 }
 function refresh(){ if(GRID&&GRID.win&&WINS.has(GRID.win.id))renderGrid(); renderDash(); renderDock();
   updateUndoBtns(); updateBell(); if(MOBILE)mobRender(); }
@@ -2798,7 +2999,8 @@ function mobRender(){
   document.getElementById('mtabs').querySelectorAll('[data-mt]').forEach(b=>b.onclick=()=>mobTab(b.dataset.mt));
   const V={dash:mobDash,reg:mobList,one:mobOne,late:mobLate,more:mobMore,plan:mobPlan};
   document.getElementById('mbody').innerHTML=(V[MOB.view]||mobDash)();
-  wireMob(); wireCharts(document.getElementById('mbody')); updateBell();
+  wireMob(); wireCharts(document.getElementById('mbody'));
+  wireClock(document.getElementById('mbody')); updateBell();
 }
 const offBar=()=>LIVE?'':`<div class="offbar"><b>Saved snapshot.</b> This copy cannot reach the
   database, so the figures are as at 14 Aug 2026 and editing is off.</div>`;
@@ -2819,7 +3021,8 @@ function mobDash(){
     <div class="panel"><h3>Where the credit sits</h3>${creditChart()}</div>
     <div class="panel"><h3>Progress by review class</h3>${classChart()}</div>
     <div class="panel"><h3>Held longest</h3>${ageingChart()}</div>
-    <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div>`;
+    <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div>
+    <div class="panel"><h3>Needs attention</h3>${attentionHTML()}</div>`;
 }
 function mobFilters(){
   const F=[['','All',()=>AB.length],
@@ -3357,6 +3560,8 @@ async function loadData(){
   await loadCommentCounts();
   await loadPlanning();
   await loadMembers();
+  await loadSnaps();
+  await loadAttention();
   touchSeen();
 }
 async function loadMembers(){
