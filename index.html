@@ -919,8 +919,8 @@ const COLS=[
   {k:'daysHeld',     t:'Days',         w:60,  ro:1, cls:'num',
      calc:r=>{const d=heldDays(r);return d==null?'':d+(r.heldSince?'':'*');}},
   {k:'plannedDate',  t:'Planned',      w:100, date:1},
-  {k:'issuedDate',   t:'Issued',       w:100, date:1},
-  {k:'respondedDate',t:'Responded',    w:100, date:1},
+  {k:'issuedDate',   t:'Issued',       w:100, ro:1, cls:'mono'},
+  {k:'respondedDate',t:'Responded',    w:100, ro:1, cls:'mono'},
   {k:'remark',       t:'Remark',       w:250}
 ];
 const COLBY=Object.fromEntries(COLS.map(c=>[c.k,c]));
@@ -931,7 +931,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v10';
+const BUILD='LOD 2026-08-15 · v11';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -3148,8 +3148,10 @@ function mobOne(){
   const k=r.status||'Not Submitted', cls=k==='Not Submitted'?'N':k;
   const MONO={ref:1,reviewClass:1,status:1,plannedDate:1,issuedDate:1,respondedDate:1};
   const show=COLS.filter(c=>c.k!=='sn');
-  const HINT={plannedDate:"HESCO's committed date",issuedDate:'sent to Maaden',
-    respondedDate:'Maaden replied',heldSince:'date the current holder received it',
+  const HINT={plannedDate:"HESCO's committed date",
+    issuedDate:'from the last revision — log a submission to change it',
+    respondedDate:'from the last revision — log a submission to change it',
+    heldSince:'date the current holder received it',
     daysHeld:'counted from “in court since”, updates daily'};
   const row=c=>{
     // calculated columns are read-only and must show their computed value
