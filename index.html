@@ -901,19 +901,21 @@ const XLSX_CDN='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min
 
 const HOLDERS=['HESCO','AWPT',"Maaden",'Closed'];
 const STATUSES=['Code A','Deemed','Code B','Under review','Rejected',
-  'RWC','Under AWPT review','Not issued'];
+  'RNC','RWC','Under AWPT review','Not issued'];
 const CREDIT={'Code A':100,'Deemed':100,'Code B':85,'Under review':50,
-  'Rejected':0,'RWC':0,'Under AWPT review':0,'Not issued':0};
+  'Rejected':0,'RNC':0,'RWC':0,'Under AWPT review':0,'Not issued':0};
 const STATUS_LONG={'Code A':'Approved — Code A','Deemed':'Deemed approved (>10 wd)',
   'Code B':'Approved with comments — Code B','Under review':'Issued, under review',
-  'Rejected':'Rejected','RWC':'Issued to AWPT — reviewed with comments',
+  'Rejected':'Rejected','RNC':'AWPT reviewed — no comments',
+  'RWC':'AWPT reviewed — with comments',
   'Under AWPT review':'Issued to AWPT — under AWPT review','Not issued':'Not yet issued'};
 const CLASSES=['IFI','IFR','AWPT-only'];
 const SCOPES=['Base','Optional'];
 const APPROVED=['Code A','Deemed','Code B'], REJECTED=['Rejected'];
 const CODES=STATUSES;
 const COLOR={'Code A':'#0f9d58','Deemed':'#4bb07a','Code B':'#6fc38a','Under review':'#f0b429',
-  'Rejected':'#d64545','RWC':'#7d8fa0','Under AWPT review':'#a7b2bd','Not issued':'#cbd2d8'};
+  'Rejected':'#d64545','RNC':'#6b7f92','RWC':'#7d8fa0',
+  'Under AWPT review':'#a7b2bd','Not issued':'#cbd2d8'};
 const HCOLOR={'HESCO':'#d64545','AWPT':'#f0b429',"Maaden":'#2a78d6','Closed':'#0f9d58'};
 const DISCS=['ARCH','Civil','Electric','General','ICT','ICT/Mech','Mech/ELC',
   'Mechanical','Process','Project Man','Structural'];
@@ -926,14 +928,14 @@ const COLS=[
   {k:'discipline',   t:'Discipline',   w:130, opts:()=>DISCS},
   {k:'reviewClass',  t:'Class',        w:88,  cls:'ctr', opts:()=>CLASSES},
   {k:'scope',        t:'Scope',        w:86,  cls:'ctr', opts:()=>SCOPES},
-  {k:'status',       t:'Status',       w:120, cls:'ctr', opts:()=>STATUSES, pill:1},
+  {k:'status',       t:'Status',       w:130, ro:1, cls:'ctr', pill:1},
   {k:'credit',       t:'Credit',       w:66,  ro:1, cls:'num',
      calc:r=>(CREDIT[r.status]!=null?CREDIT[r.status]:0)+'%'},
-  {k:'holder',       t:'Ball in court',w:104, cls:'ctr', opts:()=>HOLDERS},
+  {k:'holder',       t:'Ball in court',w:104, ro:1, cls:'ctr'},
   {k:'action',       t:'Action required',w:230},
   {k:'reviewDays',   t:'Review wd',    w:86,  ro:1, cls:'num',
      calc:r=>{const c=reviewClock(r);return c?c.used+' / '+c.limit:'';}},
-  {k:'heldSince',    t:'In court since', w:110, date:1},
+  {k:'heldSince',    t:'In court since', w:110, ro:1, cls:'mono'},
   {k:'daysHeld',     t:'Days',         w:60,  ro:1, cls:'num',
      calc:r=>{const d=heldDays(r);return d==null?'':d+(r.heldSince?'':'*');}},
   {k:'plannedDate',  t:'Planned',      w:100, date:1},
@@ -949,7 +951,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v28';
+const BUILD='LOD 2026-08-15 · v29';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -3284,7 +3286,9 @@ function mobOne(){
   const HINT={plannedDate:"HESCO's committed date",
     issuedDate:'from the last revision — log a submission to change it',
     respondedDate:'from the last revision — log a submission to change it',
-    heldSince:'date the current holder received it',
+    status:'set by the submission history',
+    holder:'set by the submission history',
+    heldSince:'set by the submission history',
     daysHeld:'counted from “in court since”, updates daily'};
   const row=c=>{
     // calculated columns are read-only and must show their computed value
@@ -3857,8 +3861,12 @@ function nextRev(docId,leg){
   return 'A'+String((top<0?0:top)+1).padStart(2,'0');
 }
 const OUTCOMES={
-  HESCO:['','Under AWPT review','RWC'],
-  Maaden:['','Code A','Code B','Deemed','Rejected']
+  HESCO:['','RNC','RWC'],                       // AWPT's review of HESCO's work
+  Maaden:['','Code A','Code B','Rejected']      // the Client's codes
+};
+const OUTCOME_HINT={
+  HESCO:'RNC — reviewed, no comments (AWPT will issue it on). RWC — returned to HESCO with comments.',
+  Maaden:'Code A approved · Code B approved with comments · Rejected. Deemed approval is applied automatically after 10 working days on IFI documents.'
 };
 function editHistRow(r,id){
   if(!canEdit())return toast('Your account cannot edit');
@@ -3913,23 +3921,7 @@ function removeHistRow(r,id){
       try{
         await api('lod_history?id=eq.'+id,{method:'DELETE'});
         await loadRevsFor(r.id);
-        // put the document back in step with whatever cycle is now the latest
-        const left=(HIST[r.id]||[]).filter(x=>x.submitted)
-          .sort((a,b)=>String(a.submitted).localeCompare(String(b.submitted)));
-        const last=left[left.length-1];
-        let patch=null;
-        if(!last){ patch={holder:'HESCO',status:'Not issued',heldSince:'',
-                          issuedDate:'',respondedDate:''}; }
-        else if(last.leg==='Maaden'){
-          patch={holder:last.responded?(['Code A','Code B','Deemed'].includes(last.status)?'Closed':'HESCO'):'Maaden',
-                 status:last.responded?(last.status||'Under review'):'Under review',
-                 heldSince:last.responded||last.submitted};
-        } else {
-          patch={holder:last.responded?'HESCO':'AWPT',
-                 status:last.responded?'RWC':'Under AWPT review',
-                 heldSince:last.responded||last.submitted};
-        }
-        if(patch){ await apiUpdate(r.id,patch); Object.assign(r,patch); }
+        // the database re-derives the document from whatever cycles remain
         const fresh=await api('lod_docs?id=eq.'+r.id+'&limit=1');
         if(fresh&&fresh[0])Object.assign(r,fresh[0]);
         await logAct('edit',r,'cycle removed',(c.leg||'')+' '+(c.rev||''),'');
@@ -3961,6 +3953,7 @@ function logCycle(r){
     <select class="f big" id="lgOut">
       ${OUTCOMES[leg].map(o=>`<option value="${esc(o)}">${o?esc(o):'— no reply yet —'}</option>`).join('')}
     </select>
+    <div class="hint" style="margin-top:5px">${OUTCOME_HINT[leg]}</div>
     <div class="hint" id="lgNote" style="margin-top:10px"></div>`;
   const note=()=>{
     const leg=document.getElementById('lgLeg').value;
@@ -3968,11 +3961,17 @@ function logCycle(r){
     const out=document.getElementById('lgOut').value;
     const el=document.getElementById('lgNote'); if(!el)return;
     let holder,status;
-    if(leg==='Maaden'){ holder=resp?(['Code A','Code B','Deemed'].includes(out)?'Closed':'HESCO'):'Maaden';
-      status=resp?(out||'Under review'):'Under review'; }
-    else { holder=resp?'HESCO':'AWPT'; status=resp?(out||'RWC'):'Under AWPT review'; }
-    el.innerHTML=`This will set <b>ball in court</b> to <b>${esc(holder)}</b>
-      and <b>status</b> to <b>${esc(status)}</b>, and restart the day count.`;
+    if(leg==='Maaden'){
+      holder=resp?(['Code A','Code B'].includes(out)?'Closed':'HESCO'):'Maaden';
+      status=resp?(out||'Under review'):'Under review';
+    } else {
+      holder=resp?(out==='RNC'?'AWPT':'HESCO'):'AWPT';
+      status=resp?(out||'RWC'):'Under AWPT review';
+    }
+    el.innerHTML=`The document will read <b>${esc(status)}</b> with
+      <b>${esc(holder)}</b> holding it, and the day count restarts.`+
+      (leg==='HESCO'&&resp&&out==='RNC'
+        ?' AWPT has cleared it, so it stays with AWPT to issue onward.':'');
   };
   const rebuild=()=>{
     const leg=document.getElementById('lgLeg').value;
@@ -3996,25 +3995,19 @@ function logCycle(r){
       const resp=document.getElementById('lgResp').value;
       const out=document.getElementById('lgOut').value;
       if(!rev||!sent)return toast('A revision and a date sent are needed');
-      let holder,status;
-      if(leg==='Maaden'){ holder=resp?(['Code A','Code B','Deemed'].includes(out)?'Closed':'HESCO'):'Maaden';
-        status=resp?(out||'Under review'):'Under review'; }
-      else { holder=resp?'HESCO':'AWPT'; status=resp?(out||'RWC'):'Under AWPT review'; }
       try{
         await api('lod_history',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({
-          docId:r.id,leg,rev,submitted:sent,responded:resp||'',status:leg==='Maaden'?(out||''):'',
+          docId:r.id,leg,rev,submitted:sent,responded:resp||'',status:resp?(out||''):'',
           days:(resp&&sent&&resp>=sent)?days(sent,resp):null,
           source:(USER&&USER.email)||'app'})});
-        // Issued and Responded are derived by the database from the latest cycle;
-        // set only what the app owns, then read the row back so nothing is stale
-        const patch={holder,status,heldSince:resp||sent};
-        await apiUpdate(r.id,patch);
+        // status, ball in court and the dates are derived by the database from
+        // the cycles — the app records the cycle and reads the result back
         logAct('edit',r,'submission','',leg+' '+rev+' '+sent);
         await loadRevsFor(r.id);
         const fresh=await api('lod_docs?id=eq.'+r.id+'&limit=1');
-        if(fresh&&fresh[0])Object.assign(r,fresh[0]); else Object.assign(r,patch);
+        if(fresh&&fresh[0])Object.assign(r,fresh[0]);
         if(MOBILE)mobRender(); else refresh();
-        toast(rev+' logged — now with '+holder);
+        toast(rev+' logged — now with '+(r.holder||''));
       }catch(e){
         if(e&&e.cur){ Object.assign(r,e.cur);
           msgBox('Someone else changed this document','',
