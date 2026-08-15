@@ -445,6 +445,7 @@ table.g thead th.corner{text-align:center}
 .ph-live{background:rgba(15,157,88,.15);color:#0b7a44}
 .ph-future{background:var(--accent-soft2);color:var(--accent)}
 .ph-past{background:var(--surface2);color:var(--muted)}
+.ph-kind{background:var(--accent-soft2);color:var(--accent)}
 body.mobile .ph-past{background:var(--m-chip)}
 :root[data-theme="dark"] .ph-live{color:#5fd08e}
 .pstate{display:inline-block;padding:1px 8px;border-radius:20px;font-size:10.5px;font-weight:700;
@@ -935,7 +936,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v17';
+const BUILD='LOD 2026-08-15 · v18';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1915,11 +1916,31 @@ function itemState(it,plan){
   const r=AB.find(a=>a.id===it.docId)||{};
   if(plan&&!planStarted(plan))
     return {k:'pending',label:'Planned',cls:'st-none'};
+
+  if(plan&&plan.kind==='review'){
+    // AWPT's queue: done once the document has moved out of AWPT's court
+    const was=(it.baseHolder||'AWPT');
+    const moved=r.holder&&r.holder!=='AWPT'&&r.holder!==was;
+    if(moved){
+      const late=it.plannedDate&&(r.heldSince||today)>it.plannedDate;
+      const where=r.holder==='Maaden'?'Issued to Maaden'
+        :r.holder==='Closed'?'Closed'
+        :'Returned to HESCO';
+      return {k:late?'late':'done',label:where+(late?' (late)':''),
+              cls:late?'st-late':'st-done'};
+    }
+    if(it.plannedDate&&it.plannedDate<today)
+      return {k:'overdue',label:days(it.plannedDate,today)+'d overdue',cls:'st-over'};
+    if(it.plannedDate)return {k:'due',label:'Due '+it.plannedDate,cls:'st-due'};
+    return {k:'nodate',label:'No target date',cls:'st-none'};
+  }
+
+  // a submission plan: done once it has been issued since it was planned
   const sub=(r.issuedDate||'').trim(), base=(it.baseSub||'').trim();
   const done=!!sub&&sub!==base;
   if(done){
     const late=it.plannedDate&&sub>it.plannedDate;
-    return {k:late?'late':'done',label:late?'Submitted late':'Submitted',
+    return {k:late?'late':'done',label:late?'Issued late':'Issued',
             cls:late?'st-late':'st-done',sub,days:it.plannedDate?days(it.plannedDate,sub):null};
   }
   if(it.plannedDate&&it.plannedDate<today)
@@ -1938,8 +1959,11 @@ function planProgress(planId){
     overdue:st.filter(x=>x.k==='overdue').length,
     open:st.filter(x=>x.k==='due'||x.k==='nodate'||x.k==='pending').length,
     pct:items.length?Math.round(done/items.length*100):0,
-    started:planStarted(plan),phase:planPhase(plan)};
+    started:planStarted(plan),phase:planPhase(plan),
+    kind:plan?plan.kind:'submission',verb:planVerb(plan)};
 }
+const planKindLabel=p=>(p&&p.kind==='review')?'AWPT review':'HESCO submission';
+const planVerb=p=>(p&&p.kind==='review')?'cleared':'issued';
 function progressBar(p){
   const w=n=>p.total?(n/p.total*100):0;
   if(!p.started)return `<div class="pgwrap">
@@ -1947,7 +1971,7 @@ function progressBar(p){
     <div class="pgbar"></div>
     <div class="pglg"><span>Progress starts being measured on the first day of the week.</span></div></div>`;
   return `<div class="pgwrap">
-    <div class="pgnum"><b>${p.pct}%</b><span>${p.done} of ${p.total} submitted${
+    <div class="pgnum"><b>${p.pct}%</b><span>${p.done} of ${p.total} ${p.verb||'issued'}${
       p.phase.k==='past'?' · week finished':''}</span></div>
     <div class="pgbar">
       <i class="on" style="width:${w(p.onTime)}%"></i>
@@ -1983,7 +2007,8 @@ async function openPlans(){
         <button class="btn" id="pdel"${canEdit()&&current?'':' disabled'}>Delete plan</button>
         <button class="btn" id="ppdf"${current?'':' disabled'}>Export PDF</button>
         <span class="hint" id="pcount">${plan?`<span class="phase ph-${planPhase(plan).k}">${
-          esc(planPhase(plan).label)}</span> · `:''}${items.length} document(s)</span>
+          esc(planPhase(plan).label)}</span> <span class="phase ph-kind">${
+          esc(planKindLabel(plan))}</span> · `:''}${items.length} document(s)</span>
       </div>
       ${plan&&items.length?`<div class="panel">${progressBar(planProgress(current))}</div>`:''}
       ${plan&&PLAN_VIEW==='gantt'?`<div class="panel">${ganttHTML(current)}</div>`:''}
@@ -2028,7 +2053,12 @@ function wirePlan(draw){
     const opts=weekOptions(2,4);
     const first=opts.find(o=>!o.taken&&o.ws>=weekStartOf(today))||opts.find(o=>!o.taken);
     msgBox('New weekly plan','',
-      `<div class="hint" style="margin-bottom:9px">Weeks run Saturday to Thursday.
+      `<label class="fl">What does this week cover?</label>
+       <select class="f big" id="pkind">
+         <option value="submission">HESCO issuing documents to AWPT</option>
+         <option value="review">AWPT clearing its review queue</option>
+       </select>
+       <div class="hint" style="margin:9px 0">Weeks run Saturday to Thursday.
          A future week is fine — progress is only measured once it starts.</div>
        <select class="f" id="pw" style="width:100%;margin-bottom:9px">
          ${opts.map(o=>`<option value="${o.ws}"${o.taken?' disabled':''}${
@@ -2045,7 +2075,8 @@ function wirePlan(draw){
           if(existing){ PLAN_CUR=existing.id; await draw();
             toast('That week already has a plan — opened it'); return; }
           const r=await api('lod_plans',{method:'POST',headers:{Prefer:'return=representation'},
-            body:JSON.stringify({weekStart:d,name:n,createdBy:(USER&&USER.email)||''})});
+            body:JSON.stringify({weekStart:d,name:n,kind:(document.getElementById('pkind')||{}).value||'submission',
+            createdBy:(USER&&USER.email)||''})});
           const id=r[0].id;
           await loadPlanning(); PLAN_CUR=id; await draw(); toast('Plan created');
         } finally { _planBusy=false; }
@@ -2143,7 +2174,9 @@ async function addPickedToPlan(){
       let planId;
       if(v.startsWith('n')){
         const r=await api('lod_plans',{method:'POST',headers:{Prefer:'return=representation'},
-          body:JSON.stringify({weekStart:v.slice(1),name:'',createdBy:(USER&&USER.email)||''})});
+          body:JSON.stringify({weekStart:v.slice(1),name:'',
+            kind:(document.getElementById('apkind')||{}).value||'submission',
+            createdBy:(USER&&USER.email)||''})});
         planId=r[0].id; await loadPlanning();
       } else planId=+v.slice(1);
       let added=0,already=0;
@@ -2164,11 +2197,16 @@ async function addPickedToPlan(){
 
 function openPicker(planId,draw){
   const on=new Set((PITEMS[planId]||[]).map(i=>i.docId));
+  const plan=PLANS.find(p=>p.id===planId);
+  const review=plan&&plan.kind==='review';
   const pool=()=>AB.filter(r=>!on.has(r.id));
-  let q='', only='open';
+  // a review week should default to what AWPT is actually holding
+  let q='', only=review?'awpt':'ns';
   const match=r=>{
+    if(only==='awpt'&&r.holder!=='AWPT')return false;
+    if(only==='hesco'&&r.holder!=='HESCO')return false;
     if(only==='open'&&!isOpen(r))return false;
-    if(only==='ns'&&r.status!=='Not Submitted')return false;
+    if(only==='ns'&&r.status!=='Not issued')return false;
     if(!q)return true;
     return ((r.ref||'')+' '+(r.title||'')+' '+(r.discipline||'')).toLowerCase().includes(q);
   };
@@ -2177,8 +2215,10 @@ function openPicker(planId,draw){
     <div class="planbar" style="margin-bottom:9px">
       <input class="f" id="pkq" placeholder="Search number, name or discipline" style="flex:1;min-width:180px" value="${esc(q)}">
       <select class="f" id="pkf" style="min-width:132px">
-        <option value="open"${only==='open'?' selected':''}>Open items</option>
-        <option value="ns"${only==='ns'?' selected':''}>Not submitted</option>
+        <option value="awpt"${only==='awpt'?' selected':''}>With AWPT now</option>
+        <option value="hesco"${only==='hesco'?' selected':''}>With HESCO now</option>
+        <option value="ns"${only==='ns'?' selected':''}>Not issued yet</option>
+        <option value="open"${only==='open'?' selected':''}>Anything open</option>
         <option value=""${only===''?' selected':''}>Everything</option>
       </select></div>
     <div class="picker">${pool().filter(match).slice(0,300).map(r=>`
@@ -3246,9 +3286,10 @@ function mobPlan(){
     </article>`;};
   return offBar()+`
     <select class="f" id="mpweek" style="width:100%;margin-bottom:12px;padding:10px;border-radius:11px">
-      ${PLANS.map(x=>`<option value="${x.id}"${x.id===PLAN_CUR?' selected':''}>${esc(weekLabel(x.weekStart))}${
-        x.name?' · '+esc(x.name):''}</option>`).join('')}</select>
+      ${PLANS.map(x=>`<option value="${x.id}"${x.id===PLAN_CUR?' selected':''}>${esc(weekLabel(x.weekStart))} · ${
+        esc(planKindLabel(x))}${x.name?' · '+esc(x.name):''}</option>`).join('')}</select>
     <div class="panel"><div class="phase ph-${ph.k}" style="margin-bottom:10px">${esc(ph.label)}</div>
+      <div class="phase ph-kind" style="margin:0 0 10px 6px">${esc(planKindLabel(plan))}</div>
       ${progressBar(p)}</div>
     ${canEdit()?`<div class="mcount"><span class="n"><b>${items.length}</b> document(s) planned</span>
       <button id="mpadd">Add</button>
@@ -3332,6 +3373,11 @@ function mobPlanNew(){
   const first=opts.find(o=>!o.taken&&o.ws>=weekStartOf(today))||opts.find(o=>!o.taken);
   msgBox('New weekly plan','',
     `<div class="hint" style="margin-bottom:9px">Weeks run Saturday to Thursday.</div>
+     <label class="fl">What does this week cover?</label>
+     <select class="f big" id="pkind" style="margin-bottom:10px">
+       <option value="submission">HESCO issuing documents to AWPT</option>
+       <option value="review">AWPT clearing its review queue</option>
+     </select>
      ${weekSelectHTML(first?first.ws:weekStartOf(today))}
      <input class="f" id="mpn" placeholder="A note, optional" style="width:100%;padding:11px;font-size:15px">`,
     [['Cancel',null,''],['Create',async()=>{
@@ -3339,7 +3385,9 @@ function mobPlanNew(){
       if(PLANS.some(p=>p.weekStart===d))return toast('That week already has a plan');
       const r=await api('lod_plans',{method:'POST',headers:{Prefer:'return=representation'},
         body:JSON.stringify({weekStart:d,
-          name:document.getElementById('mpn').value.trim(),createdBy:(USER&&USER.email)||''})});
+          name:document.getElementById('mpn').value.trim(),
+          kind:(document.getElementById('pkind')||{}).value||'submission',
+          createdBy:(USER&&USER.email)||''})});
       await loadPlanning(); PLAN_CUR=r[0].id; await loadPlanItems(PLAN_CUR);
       mobRender(); toast('Plan created');},'primary']]);
 }
