@@ -949,7 +949,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v25';
+const BUILD='LOD 2026-08-15 · v27';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1843,12 +1843,13 @@ const weekLabel=ws=>{
   const f=d=>d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
   return 'Sat '+f(a)+' – Thu '+f(b);
 };
-function weekOptions(back,fwd){
+function weekOptions(back,fwd,kind){
+  const k=kind||PLAN_KIND;
   const out=[], base=new Date(weekStartOf(today));
   for(let i=-back;i<=fwd;i++){
     const d=new Date(base); d.setDate(d.getDate()+i*7);
     const ws=d.toISOString().slice(0,10);
-    const taken=PLANS.find(p=>p.weekStart===ws);
+    const taken=PLANS.find(p=>p.weekStart===ws&&(p.kind||'submission')===k);
     out.push({ws,label:weekLabel(ws),taken:!!taken,planId:taken?taken.id:null,
       note:i===0?'this week':i===1?'next week':i===-1?'last week'
         :i<0?Math.abs(i)+' weeks ago':'in '+i+' weeks'});
@@ -2072,7 +2073,7 @@ function wirePlan(draw){
   const sel=$('pweek');
   if(sel)sel.onchange=async()=>{ PLAN_CUR=+sel.value; await draw(); };
   if($('pnew'))$('pnew').onclick=()=>{
-    const opts=weekOptions(2,4);
+    const opts=weekOptions(2,4,PLAN_KIND);
     const first=opts.find(o=>!o.taken&&o.ws>=weekStartOf(today))||opts.find(o=>!o.taken);
     msgBox('New weekly plan','',
       `<label class="fl">What does this week cover?</label>
@@ -2129,7 +2130,7 @@ function wirePlan(draw){
       [['Cancel',null,''],['Save',async()=>{
         const d=weekStartOf(document.getElementById('pw').value||p.weekStart);
         const n=document.getElementById('pn').value.trim();
-        const clash=PLANS.find(x=>x.weekStart===d&&x.id!==p.id);
+        const clash=plansOfKind(p.kind||'submission').find(x=>x.weekStart===d&&x.id!==p.id);
         if(clash)return toast('Another plan already covers that week');
         await api('lod_plans?id=eq.'+p.id,{method:'PATCH',body:JSON.stringify({weekStart:d,name:n})});
         await loadPlanning(); await draw(); toast('Plan updated');
@@ -3305,19 +3306,21 @@ function mobOne(){
 function mobPlan(){
   syncPlanKind();
   if(!PLANS.length)return offBar()+
-    `<div class="empty"><b>No plan yet</b>${canEdit()
-      ?'Create one from the desktop layout, or tap New week below.':'Ask an editor to set one up.'}</div>
-     ${canEdit()?'<button class="btn primary" id="mpnew" style="width:100%;padding:12px;border-radius:12px">New week</button>':''}`;
+    `<div class="empty"><b>No plans yet</b>${canEdit()
+      ?'Start a week and add the documents it should cover.':'Ask an editor to set one up.'}</div>
+     ${canEdit()?'<button class="btn primary" id="mpnew" style="width:100%;padding:13px;border-radius:12px">New week</button>':''}`;
   syncPlanKind();
   const kindTabs=`<div class="kindtabs">${KINDS.map(([k,label])=>
     `<button class="kindtab${PLAN_KIND===k?' on':''}" data-mkind="${k}">${label}
       <i>${plansOfKind(k).length} week${plansOfKind(k).length===1?'':'s'}</i></button>`).join('')}</div>`;
   if(!PLAN_CUR){
+    const what=PLAN_KIND==='review'?'review':'submission';
     return offBar()+kindTabs+
-      `<div class="empty"><b>No ${PLAN_KIND==='review'?'review':'submission'} weeks yet</b>
-        ${canEdit()?'Use ⋯ → New week to start one.':'Ask an editor to set one up.'}</div>
-       ${canEdit()?`<div class="mcount"><span class="n">&nbsp;</span>
-         <button id="mpmore" aria-label="Manage plans">⋯</button></div>`:''}`;
+      `<div class="empty"><b>No ${what} weeks yet</b>
+        ${canEdit()?'Start one and add the documents it should cover.'
+                   :'Ask an editor to set one up.'}</div>
+       ${canEdit()?`<button class="btn primary" id="mpnew"
+          style="width:100%;padding:13px;border-radius:12px">New ${what} week</button>`:''}`;
   }
   const items=PITEMS[PLAN_CUR]||[];
   const p=planProgress(PLAN_CUR);
@@ -3396,7 +3399,8 @@ function mobPlanItem(itemId){
 }
 
 function mobPlanManage(){
-  const p=PLANS.find(x=>x.id===PLAN_CUR); if(!p)return;
+  const p=PLANS.find(x=>x.id===PLAN_CUR);
+  if(!p){ return mobPlanNew(); }
   const n=(PITEMS[p.id]||[]).length;
   msgBox(weekLabel(p.weekStart),'',
     `<div class="mrowlist">
@@ -3421,13 +3425,21 @@ function weekSelectHTML(sel,skipId){
       o.ws===sel?' selected':''}>${esc(o.label)} · ${esc(o.note)}${
       o.taken&&o.planId!==skipId?' — already planned':''}</option>`).join('')}</select>`;
 }
+function mobPlanKindSwap(k){
+  const sel=document.getElementById('mpw'); if(!sel)return;
+  const opts=weekOptions(2,4,k);
+  sel.innerHTML=opts.map(o=>`<option value="${o.ws}"${o.taken?' disabled':''}>${
+    esc(o.label)} · ${esc(o.note)}${o.taken?' — already planned':''}</option>`).join('');
+  const first=opts.find(o=>!o.taken&&o.ws>=weekStartOf(today))||opts.find(o=>!o.taken);
+  if(first)sel.value=first.ws;
+}
 function mobPlanNew(){
-  const opts=weekOptions(2,4);
+  const opts=weekOptions(2,4,PLAN_KIND);
   const first=opts.find(o=>!o.taken&&o.ws>=weekStartOf(today))||opts.find(o=>!o.taken);
   msgBox('New weekly plan','',
     `<div class="hint" style="margin-bottom:9px">Weeks run Saturday to Thursday.</div>
      <label class="fl">What does this week cover?</label>
-     <select class="f big" id="pkind" style="margin-bottom:10px">
+     <select class="f big" id="pkind" style="margin-bottom:10px" onchange="mobPlanKindSwap(this.value)">
        <option value="submission"${PLAN_KIND==='submission'?' selected':''}>HESCO submissions — documents to be issued</option>
        <option value="review"${PLAN_KIND==='review'?' selected':''}>AWPT review — documents waiting on a response</option>
      </select>
@@ -3435,7 +3447,7 @@ function mobPlanNew(){
      <input class="f" id="mpn" placeholder="A note, optional" style="width:100%;padding:11px;font-size:15px">`,
     [['Cancel',null,''],['Create',async()=>{
       const d=document.getElementById('mpw').value;
-      if(PLANS.some(p=>p.weekStart===d))return toast('That week already has a plan');
+      if(plansOfKind(PLAN_KIND).some(p=>p.weekStart===d))return toast('That week already has a plan in this category');
       const r=await api('lod_plans',{method:'POST',headers:{Prefer:'return=representation'},
         body:JSON.stringify({weekStart:d,
           name:document.getElementById('mpn').value.trim(),
@@ -3451,7 +3463,7 @@ function mobPlanEdit(p){
        style="width:100%;padding:11px;font-size:15px">`,
     [['Cancel',null,''],['Save',async()=>{
       const d=document.getElementById('mpw').value;
-      if(PLANS.some(x=>x.weekStart===d&&x.id!==p.id))return toast('Another plan covers that week');
+      if(plansOfKind(p.kind||'submission').some(x=>x.weekStart===d&&x.id!==p.id))return toast('Another plan in this category covers that week');
       await api('lod_plans?id=eq.'+p.id,{method:'PATCH',
         body:JSON.stringify({weekStart:d,name:document.getElementById('mpn').value.trim()})});
       await loadPlanning(); mobRender(); toast('Plan updated');},'primary']]);
