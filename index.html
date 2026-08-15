@@ -931,7 +931,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v13';
+const BUILD='LOD 2026-08-15 · v14';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -3691,20 +3691,46 @@ function editHistRow(r,id){
 }
 function removeHistRow(r,id){
   const c=(HIST[r.id]||[]).find(x=>x.id===id); if(!c)return;
+  const others=(HIST[r.id]||[]).filter(x=>x.id!==id&&x.submitted)
+    .sort((a,b)=>String(a.submitted).localeCompare(String(b.submitted)));
+  const next=others[others.length-1];
+  const after=!next
+    ? 'Nothing else has been recorded, so the document goes back to <b>Not issued</b> with no dates.'
+    : `The document will follow <b>${esc(next.rev)}</b>
+       (${next.leg==='HESCO'?'HESCO → AWPT':'AWPT → Maaden'}, sent ${esc(next.submitted)}${
+        next.responded?', replied '+esc(next.responded):', no reply yet'}).`;
   msgBox('Remove '+(c.rev||'this cycle')+'?','',
     `<b>${esc(r.title||'')}</b><br><br>
      ${c.leg==='HESCO'?'HESCO → AWPT':'AWPT → Maaden'} · sent ${esc(c.submitted||'—')}${
        c.responded?', replied '+esc(c.responded):''}.<br><br>
-     ${c.leg==='Maaden'?'If this is the latest trip to Maaden, the document\'s Issued and Responded dates will fall back to the one before it.<br><br>':''}
+     ${after}<br><br>
      <b>This cannot be undone.</b>`,
     [['Keep it',null,''],['Remove',async()=>{
       try{
         await api('lod_history?id=eq.'+id,{method:'DELETE'});
         await loadRevs();
+        // put the document back in step with whatever cycle is now the latest
+        const left=(HIST[r.id]||[]).filter(x=>x.submitted)
+          .sort((a,b)=>String(a.submitted).localeCompare(String(b.submitted)));
+        const last=left[left.length-1];
+        let patch=null;
+        if(!last){ patch={holder:'HESCO',status:'Not issued',heldSince:'',
+                          issuedDate:'',respondedDate:''}; }
+        else if(last.leg==='Maaden'){
+          patch={holder:last.responded?(['Code A','Code B','Deemed'].includes(last.status)?'Closed':'HESCO'):'Maaden',
+                 status:last.responded?(last.status||'Under review'):'Under review',
+                 heldSince:last.responded||last.submitted};
+        } else {
+          patch={holder:last.responded?'HESCO':'AWPT',
+                 status:last.responded?'RWC':'Under AWPT review',
+                 heldSince:last.responded||last.submitted};
+        }
+        if(patch){ await apiUpdate(r.id,patch); Object.assign(r,patch); }
         const fresh=await api('lod_docs?id=eq.'+r.id+'&limit=1');
         if(fresh&&fresh[0])Object.assign(r,fresh[0]);
+        await logAct('edit',r,'cycle removed',(c.leg||'')+' '+(c.rev||''),'');
         if(MOBILE)mobRender(); else refresh();
-        toast((c.rev||'Cycle')+' removed');
+        toast((c.rev||'Cycle')+' removed — now with '+(r.holder||''));
       }catch(e){ toast('Could not remove that cycle'); }
     },'danger']]);
 }
