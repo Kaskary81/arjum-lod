@@ -949,7 +949,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v27';
+const BUILD='LOD 2026-08-15 · v28';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2036,7 +2036,7 @@ async function openPlans(){
       ${plan&&PLAN_VIEW==='gantt'?`<div class="panel">${ganttHTML(current)}</div>`:''}
       ${plan&&PLAN_VIEW!=='gantt'?`<div class="panel">${items.length?`
         <table class="ptbl"><thead><tr><th>Document</th><th>Name</th><th>Discipline</th>
-          <th>Responsible</th><th>Target</th><th>Progress</th><th>Code</th><th></th></tr></thead><tbody>
+          <th>Responsible</th><th>Target</th><th>Progress</th><th>Code</th><th>History</th></tr></thead><tbody>
         ${items.map(it=>{const r=AB.find(a=>a.id===it.docId)||{};
           const k=r.status||'Not Submitted';
           return `<tr data-i="${it.id}">
@@ -2049,7 +2049,11 @@ async function openPlans(){
             <td><input class="f pd" type="date" data-i="${it.id}" value="${esc(it.plannedDate||'')}"${canEdit()?'':' disabled'}></td>
             <td><span class="pstate ${itemState(it,plan).cls}">${esc(itemState(it,plan).label)}</span></td>
             <td class="ctr"><span class="pill ${k==='Not Submitted'?'s-N':'s-'+k}">${esc(k==='Not Submitted'?'Not sub.':k)}</span></td>
-            <td><button class="btn" data-rm="${it.id}"${canEdit()?'':' disabled'} style="padding:2px 8px">✕</button></td>
+            <td style="white-space:nowrap">
+              <button class="btn" data-hist="${it.docId}" style="padding:2px 8px"
+                title="Submission history">⟲</button>
+              <button class="btn" data-rm="${it.id}"${canEdit()?'':' disabled'}
+                style="padding:2px 8px" title="Remove from the plan">✕</button></td>
           </tr>`;}).join('')}
         </tbody></table>`
         :'<div class="empty"><b>Nothing planned for this week</b>Select documents in the register, then press “Add selected documents”.</div>'}
@@ -2146,6 +2150,12 @@ function wirePlan(draw){
         delete PITEMS[p.id]; PLAN_CUR=null;
         await loadPlanning(); await draw(); toast('Plan deleted');
       },'danger']]);};
+  w.body.querySelectorAll('[data-hist]').forEach(b=>b.onclick=()=>{
+    const r=AB.find(x=>x.id===+b.dataset.hist);
+    if(!r)return;
+    const hw=[...WINS.values()].find(x=>x.kind==='hist')||
+      createWindow('hist','Submission history','',null,null,660,520);
+    hw.rowId=r.id; paintCycles(hw,r); focusWin(hw.id);});
   w.body.querySelectorAll('.pa').forEach(inp=>inp.onchange=async()=>{
     const who=await resolveAssignee(inp.value);
     await api('lod_plan_items?id=eq.'+inp.dataset.i,{method:'PATCH',body:JSON.stringify({assigneeId:who})});
@@ -3369,6 +3379,34 @@ function mobPlanRemove(itemId){
       await api('lod_plan_items?id=eq.'+itemId,{method:'DELETE'});
       await loadPlanItems(PLAN_CUR); mobRender(); toast('Removed from the plan');},'danger']]);
 }
+function mobPlanChoose(itemId){
+  const it=(PITEMS[PLAN_CUR]||[]).find(x=>x.id===itemId); if(!it)return;
+  const r=AB.find(a=>a.id===it.docId)||{};
+  const cycles=(HIST[r.id]||[]).length;
+  msgBox(r.docNumber||r.ref||'Planned document','',
+    `<div class="itemhd">${esc(r.title||'')}<span>${esc(r.discipline||'')}</span></div>
+     <div class="mrowlist" style="margin-top:12px">
+       <button class="mopt" data-c="plan">Update the plan
+         <span>Responsible and target date for this week${
+           it.plannedDate?' — currently '+esc(it.plannedDate):''}</span></button>
+       <button class="mopt" data-c="hist">Update the submission history
+         <span>${cycles?cycles+' cycle(s) recorded':'Nothing recorded yet'} — log a submission or a reply</span></button>
+     </div>`,[['Close',null,'']]);
+  document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{
+    const a=b.dataset.c; closeMsg();
+    if(a==='plan')mobPlanItem(itemId);
+    else mobPlanHistory(r);});
+}
+/* the document's cycles, reachable without leaving the plan */
+function mobPlanHistory(r){
+  msgBox(r.docNumber||r.ref||'Submission history','',
+    `<div class="itemhd">${esc(r.title||'')}<span>${esc(r.discipline||'')}</span></div>
+     <div id="phist" style="margin-top:12px">${historyHTML(r)}</div>`,
+    canEdit()?[['Log a submission',()=>{closeMsg();logCycle(r);},'primary'],['Close',null,'']]
+             :[['Close',null,'']]);
+  if(canEdit())document.querySelectorAll('#phist [data-hid]').forEach(el=>
+    el.onclick=()=>{closeMsg();editHistRow(r,+el.dataset.hid);});
+}
 function mobPlanItem(itemId){
   const it=(PITEMS[PLAN_CUR]||[]).find(x=>x.id===itemId); if(!it)return;
   const r=AB.find(a=>a.id===it.docId)||{};
@@ -3573,7 +3611,7 @@ function wireMob(){
     if(rr&&canEdit())b.querySelectorAll('[data-hid]').forEach(el=>
       el.onclick=()=>editHistRow(rr,+el.dataset.hid));}
   b.querySelectorAll('[data-pi]').forEach(el=>{
-    el.onclick=()=>mobPlanItem(+el.dataset.pi);
+    el.onclick=()=>mobPlanChoose(+el.dataset.pi);
     if(canEdit())attachSwipe(el,{onLeft:()=>mobPlanRemove(+el.dataset.pi)});});
   const pn=document.getElementById('mpnew');
   if(pn)pn.onclick=()=>mobPlanNew();
