@@ -408,6 +408,10 @@ body.mobile .pgbar{background:var(--m-paper)}
 .mopt:hover,.mopt:active{background:var(--accent-soft)}
 .mopt span{display:block;font-size:11.5px;font-weight:400;color:var(--muted);margin-top:2px}
 .mopt.danger{color:var(--critical)}
+.autofield{display:flex;align-items:center;gap:9px}
+.autofield .f{flex:1}
+.autofield .f[readonly]{background:var(--surface2);color:var(--ink2);cursor:default}
+body.mobile .autofield .f[readonly]{background:var(--m-paper)}
 .fl{display:block;font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
   color:var(--muted);margin:12px 0 5px}
 .fl:first-child{margin-top:0}
@@ -931,7 +935,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v14';
+const BUILD='LOD 2026-08-15 · v15';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -3645,6 +3649,14 @@ async function _oldLoadRevs(){
 function revsOf(id){ return REVS[id]||[]; }
 
 /* ---------- log a new submission cycle ---------- */
+function revBasis(docId,leg){
+  const rows=(HIST[docId]||[]).filter(x=>x.leg===leg&&x.submitted)
+    .sort((a,b)=>String(a.submitted).localeCompare(String(b.submitted)));
+  const label=leg==='HESCO'?'HESCO → AWPT':'AWPT → Maaden';
+  if(!rows.length)return 'First '+label+' cycle — starting at '+(leg==='HESCO'?'V0':'A01')+'.';
+  const last=rows[rows.length-1];
+  return 'Next after '+esc(last.rev)+' on this leg, sent '+esc(last.submitted)+'.';
+}
 function nextRev(docId,leg){
   const rows=(HIST[docId]||[]).filter(x=>x.leg===leg);
   const nums=rows.map(x=>{const m=/(\d+)/.exec(x.rev||'');return m?+m[1]:-1;});
@@ -3744,7 +3756,11 @@ function logCycle(r){
       <option value="Maaden"${leg==='Maaden'?' selected':''}>AWPT issued it to Maaden</option>
     </select>
     <label class="fl">Revision</label>
-    <input class="f big" id="lgRev" value="${esc(nextRev(r.id,leg))}">
+    <div class="autofield">
+      <input class="f big" id="lgRev" value="${esc(nextRev(r.id,leg))}" readonly>
+      <button type="button" class="lnk" id="lgRevEdit">change</button>
+    </div>
+    <div class="hint" style="margin-top:4px">${revBasis(r.id,leg)}</div>
     <label class="fl">Date sent</label>
     <input class="f big" id="lgSent" type="date" value="${today}">
     <label class="fl">Reply received (leave blank if still out)</label>
@@ -3774,6 +3790,9 @@ function logCycle(r){
   const wire=()=>{
     const L=document.getElementById('lgLeg');
     L.onchange=rebuild;
+    const re=document.getElementById('lgRevEdit');
+    if(re)re.onclick=()=>{const f=document.getElementById('lgRev');
+      f.removeAttribute('readonly'); f.focus(); f.select(); re.remove();};
     ['lgResp','lgOut'].forEach(id=>{const e=document.getElementById(id);if(e)e.onchange=note;});
     note();
   };
