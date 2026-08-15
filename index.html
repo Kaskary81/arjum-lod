@@ -935,7 +935,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v16';
+const BUILD='LOD 2026-08-15 · v17';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2618,6 +2618,10 @@ function stats(){
     optPct:Math.round(avg(base.filter(r=>r.scope==='Optional'))*10)/10,
     baseN:base.filter(r=>r.scope==='Base').length,
     optN:base.filter(r=>r.scope==='Optional').length,
+    /* issued from HESCO to AWPT = it has left HESCO at least once */
+    issuedBase:base.filter(r=>r.scope==='Base'&&r.status!=='Not issued').length,
+    issuedOpt:base.filter(r=>r.scope==='Optional'&&r.status!=='Not issued').length,
+    issuedAll:base.filter(r=>r.status!=='Not issued').length,
     hesco:byH('HESCO'), awpt:byH('AWPT'), maaden:byH("Maaden"), closed:byH('Closed'),
     open:AB.length-byH('Closed'),
     approved:AB.filter(r=>APPROVED.includes(r.status)).length,
@@ -2633,6 +2637,14 @@ function kpiHTML(){
   return tile('Overall progress',s.pct+'%',s.scored+' documents scored','var(--accent)',s.pct)+
     tile('Base scope',s.basePct+'%',s.baseN+' documents','#0f9d58',s.basePct)+
     tile('Optional scope',s.optPct+'%',s.optN+' documents','#f0b429',s.optPct)+
+    tile('Issued to AWPT · base',
+      s.baseN?Math.round(s.issuedBase/s.baseN*100)+'%':'—',
+      s.issuedBase+' of '+s.baseN+' issued','#2a78d6',
+      s.baseN?s.issuedBase/s.baseN*100:0)+
+    tile('Issued to AWPT · optional',
+      s.optN?Math.round(s.issuedOpt/s.optN*100)+'%':'—',
+      s.issuedOpt+' of '+s.optN+' issued','#7c5cd6',
+      s.optN?s.issuedOpt/s.optN*100:0)+
     tile('With HESCO',s.hesco,'to produce or resubmit','#d64545',pc(s.hesco))+
     tile('With AWPT',s.awpt,'to review and issue','#f0b429',pc(s.awpt))+
     tile("With Maaden",s.maaden,'awaiting the Client','#2a78d6',pc(s.maaden))+
@@ -2640,6 +2652,20 @@ function kpiHTML(){
 }
 
 /* ---------- ball in court ---------- */
+function issuedChart(){
+  const s=stats();
+  const row=(label,done,total,col)=>{
+    const pct=total?Math.round(done/total*1000)/10:0;
+    return `<div class="drow"><div class="dlab">${esc(label)}</div>
+      <div class="dtrack"><div class="dbar" style="width:${pct}%;background:${col}"></div></div>
+      <div class="dn">${pct}%</div><div class="dp">${done} of ${total}</div></div>`;};
+  return `<div class="chart dbars" data-chart="issued">
+    ${row('Base',s.issuedBase,s.baseN,'#2a78d6')}
+    ${row('Optional',s.issuedOpt,s.optN,'#7c5cd6')}
+    ${row('All scored',s.issuedAll,s.scored,'var(--accent)')}
+    <div class="hint" style="margin-top:8px">Documents HESCO has issued to AWPT at least once —
+      everything except those still marked Not issued. ${s.scored-s.issuedAll} still to leave HESCO.</div></div>`;
+}
 function classChart(){
   const rows=CLASSES.map(c=>{
     const all=AB.filter(r=>r.reviewClass===c), base=all.filter(inBase);
@@ -2830,6 +2856,7 @@ function renderDash(){
     <div class="panel"><h3>Progress over time</h3>${trendHTML()}</div>
     <div class="panel"><h3>Ball in court</h3>${ballChart()}</div>
     <div class="panel"><h3>Where the credit sits</h3>${creditChart()}</div>
+    <div class="panel"><h3>Issued from HESCO to AWPT</h3>${issuedChart()}</div>
     <div class="panel"><h3>Progress by review class</h3>${classChart()}</div>
     <div class="g2">
       <div class="panel"><h3>Issued to the Client — cumulative</h3>${curveChart()}</div>
@@ -3058,6 +3085,10 @@ function mobDash(){
       ${t('Progress',s.pct+'%',s.scored+' scored','var(--accent)',s.pct)}
       ${t('Base',s.basePct+'%',s.baseN+' docs','#0f9d58',s.basePct)}
       ${t('Optional',s.optPct+'%',s.optN+' docs','#f0b429',s.optPct)}
+      ${t('Issued · base',(s.baseN?Math.round(s.issuedBase/s.baseN*100):0)+'%',
+          s.issuedBase+' of '+s.baseN,'#2a78d6',s.baseN?s.issuedBase/s.baseN*100:0)}
+      ${t('Issued · optional',(s.optN?Math.round(s.issuedOpt/s.optN*100):0)+'%',
+          s.issuedOpt+' of '+s.optN,'#7c5cd6',s.optN?s.issuedOpt/s.optN*100:0)}
       ${t('Open',s.open,'of '+s.t,'#8c9aa8',Math.round(s.open/s.t*100))}
       ${t('With HESCO',s.hesco,'to act','#d64545',Math.round(s.hesco/s.t*100))}
       ${t('With AWPT',s.awpt,'to review','#f0b429',Math.round(s.awpt/s.t*100))}
@@ -3065,6 +3096,7 @@ function mobDash(){
       ${t('Closed',s.closed,'no action','#0f9d58',Math.round(s.closed/s.t*100))}</div>
     <div class="panel"><h3>Ball in court</h3>${ballChart()}</div>
     <div class="panel"><h3>Where the credit sits</h3>${creditChart()}</div>
+    <div class="panel"><h3>Issued from HESCO to AWPT</h3>${issuedChart()}</div>
     <div class="panel"><h3>Progress by review class</h3>${classChart()}</div>
     <div class="panel"><h3>Held longest</h3>${ageingChart()}</div>
     <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div>
