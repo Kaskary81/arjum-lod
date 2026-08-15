@@ -518,6 +518,20 @@ body.mobile table.histtbl{font-size:11.5px}
 body.mobile table.histtbl th:nth-child(4),body.mobile table.histtbl td:nth-child(4){display:none}
 
 /* ---- printed report ---- */
+@media print{
+  #printroot table.rtbl{table-layout:fixed;width:100%;font-size:7.4pt}
+  #printroot .rtbl th,#printroot .rtbl td{padding:2.5pt 3pt;word-wrap:break-word;overflow-wrap:anywhere}
+  #printroot .c-idx{width:3%}
+  #printroot .c-docNumber{width:17%;font-family:var(--mono);font-size:6.6pt}
+  #printroot .c-title{width:24%}
+  #printroot .c-discipline{width:8%}
+  #printroot .c-reviewClass{width:6%;text-align:center}
+  #printroot .c-scope{width:6%;text-align:center}
+  #printroot .c-status{width:9%;text-align:center}
+  #printroot .c-holder{width:8%;text-align:center}
+  #printroot .c-plannedDate,#printroot .c-issuedDate,#printroot .c-respondedDate{
+    width:6.3%;text-align:center;font-family:var(--mono);font-size:6.6pt}
+}
 #printroot{display:none}
 @media screen{ body.printing #printroot{display:none} }
 @media print{
@@ -905,7 +919,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v7';
+const BUILD='LOD 2026-08-15 · v8';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2459,29 +2473,34 @@ function filterLabel(){
 }
 function reportRows(){ return MOBILE?mobRows():(GRID&&GRID.rows?GRID.rows:AB); }
 function reportCols(){
-  if(!MOBILE)return visCols().filter(c=>c.k!=='sn');
-  return ['ref','title','discipline','reviewClass','status','plannedDate','issuedDate','respondedDate']
-    .map(k=>COLBY[k]);
+  // a fixed set — 16 columns will not fit a landscape page
+  return ['docNumber','title','discipline','reviewClass','scope','status','holder',
+          'plannedDate','issuedDate','respondedDate']
+    .map(k=>COLBY[k]).filter(Boolean);
 }
 
 const PRINT_DISC=SHORT_DISC;
-const PRINT_HEAD={ref:'Document number',title:'Submittal name',discipline:'Discipline',
-  reviewClass:'Rev',status:'Code',plannedDate:'Targeted',issuedDate:'Submitted',respondedDate:'Received'};
+const PRINT_HEAD={docNumber:'Document number',ref:'Ref',title:'Document',discipline:'Discipline',
+  reviewClass:'Class',scope:'Scope',status:'Status',holder:'Ball in court',
+  plannedDate:'Planned',issuedDate:'Issued to Maaden',respondedDate:'Response'};
 
 function buildReport(){
   const rows=reportRows(), cols=reportCols();
   const n=rows.length;
-  const sub=rows.filter(submitted).length;
+  const base=rows.filter(inBase);
+  const pct=base.length?Math.round(base.reduce((t,r)=>t+creditOf(r),0)/base.length*10)/10:0;
   const app=rows.filter(r=>APPROVED.includes(r.status)).length;
-  const rej=rows.filter(r=>REJECTED.includes(r.status)).length;
-  const ur =rows.filter(r=>r.status==='W').length;
-  const ns =n-sub;
-  const late=rows.filter(r=>!APPROVED.includes(r.status)&&r.plannedDate&&r.plannedDate<today).length;
+  const ur =rows.filter(r=>r.status==='Under review').length;
+  const ns =rows.filter(r=>r.status==='Not issued').length;
+  const wh =rows.filter(r=>r.holder==='HESCO').length;
+  const wa =rows.filter(r=>r.holder==='AWPT').length;
+  const wm =rows.filter(r=>r.holder==='Maaden').length;
+  const late=rows.filter(r=>r.holder!=='Closed'&&r.plannedDate&&r.plannedDate<today).length;
   const stamp=new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
 
   const cell=(r,c)=>{
     let v=c.calc?c.calc(r):(r[c.k]??'');
-    if(c.k==='status')v=(v||'Not Submitted')==='Not Submitted'?'Not sub.':v;
+    if(c.k==='status')v=v||'Not issued';
     if(c.k==='discipline')v=PRINT_DISC[v]||v;
     return v||'—';
   };
@@ -2497,8 +2516,9 @@ function buildReport(){
     </div>
     <div class="rfilt"><b>Selection:</b> ${esc(filterLabel())}</div>
     <div class="rkpis">
-      ${kpi('In selection',n)}${kpi('Submitted',sub)}${kpi('Approved',app)}
-      ${kpi('Under review',ur)}${kpi('Resubmit',rej)}${kpi('Not submitted',ns)}${kpi('Past target',late)}
+      ${kpi('In selection',n)}${kpi('Progress',pct+'%')}${kpi('Approved',app)}
+      ${kpi('Under review',ur)}${kpi('Not issued',ns)}${kpi('With HESCO',wh)}
+      ${kpi('With AWPT',wa)}${kpi('With Maaden',wm)}${kpi('Past planned',late)}
     </div>
     <table class="rtbl"><thead><tr><th class="c-idx">#</th>${head}</tr></thead>
       <tbody>${body}</tbody></table>
