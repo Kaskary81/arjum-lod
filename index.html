@@ -935,7 +935,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v15';
+const BUILD='LOD 2026-08-15 · v16';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -3813,12 +3813,14 @@ function logCycle(r){
           docId:r.id,leg,rev,submitted:sent,responded:resp||'',status:leg==='Maaden'?(out||''):'',
           days:(resp&&sent&&resp>=sent)?days(sent,resp):null,
           source:(USER&&USER.email)||'app'})});
+        // Issued and Responded are derived by the database from the latest cycle;
+        // set only what the app owns, then read the row back so nothing is stale
         const patch={holder,status,heldSince:resp||sent};
-        if(leg==='Maaden'){ patch.issuedDate=sent; if(resp)patch.respondedDate=resp; }
         await apiUpdate(r.id,patch);
-        Object.assign(r,patch);
         await logAct('edit',r,'submission','',leg+' '+rev+' '+sent);
         await loadRevs();
+        const fresh=await api('lod_docs?id=eq.'+r.id+'&limit=1');
+        if(fresh&&fresh[0])Object.assign(r,fresh[0]); else Object.assign(r,patch);
         if(MOBILE)mobRender(); else refresh();
         toast(rev+' logged — now with '+holder);
       }catch(e){
