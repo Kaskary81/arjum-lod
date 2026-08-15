@@ -931,7 +931,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v12';
+const BUILD='LOD 2026-08-15 · v13';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -965,7 +965,12 @@ async function api(path,opts){
   const r=await fetch(SB_URL+'/rest/v1/'+path,o);
   if(r.status===401||r.status===403){ signOut('Your session expired — please sign in again'); throw new Error('auth'); }
   if(!r.ok)throw new Error(r.status+' '+await r.text());
-  return r.status===204?null:r.json();
+  // 201 from an insert, and 204 from an update, both come back with no body —
+  // calling .json() on those throws, which used to surface as "could not save"
+  if(r.status===204||r.status===205)return null;
+  const txt=await r.text();
+  if(!txt)return null;
+  try{ return JSON.parse(txt); }catch(e){ return null; }
 }
 async function auth(path,body){
   const r=await fetch(SB_URL+'/auth/v1/'+path,{method:'POST',
@@ -3759,7 +3764,7 @@ function logCycle(r){
         status=resp?(out||'Under review'):'Under review'; }
       else { holder=resp?'HESCO':'AWPT'; status=resp?(out||'RWC'):'Under AWPT review'; }
       try{
-        await api('lod_history',{method:'POST',body:JSON.stringify({
+        await api('lod_history',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({
           docId:r.id,leg,rev,submitted:sent,responded:resp||'',status:leg==='Maaden'?(out||''):'',
           days:(resp&&sent&&resp>=sent)?days(sent,resp):null,
           source:(USER&&USER.email)||'app'})});
