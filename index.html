@@ -936,7 +936,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v18';
+const BUILD='LOD 2026-08-15 · v19';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1918,13 +1918,14 @@ function itemState(it,plan){
     return {k:'pending',label:'Planned',cls:'st-none'};
 
   if(plan&&plan.kind==='review'){
-    // AWPT's queue: done once the document has moved out of AWPT's court
-    const was=(it.baseHolder||'AWPT');
-    const moved=r.holder&&r.holder!=='AWPT'&&r.holder!==was;
+    // whoever was reviewing it when it was planned has since responded
+    const was=(it.baseHolder||'');
+    const moved=r.holder&&was&&r.holder!==was;
     if(moved){
       const late=it.plannedDate&&(r.heldSince||today)>it.plannedDate;
-      const where=r.holder==='Maaden'?'Issued to Maaden'
-        :r.holder==='Closed'?'Closed'
+      const where=r.holder==='Closed'?'Approved'
+        :r.holder==='Maaden'?'Passed to Maaden'
+        :r.holder==='AWPT'?'Back with AWPT'
         :'Returned to HESCO';
       return {k:late?'late':'done',label:where+(late?' (late)':''),
               cls:late?'st-late':'st-done'};
@@ -1962,8 +1963,8 @@ function planProgress(planId){
     started:planStarted(plan),phase:planPhase(plan),
     kind:plan?plan.kind:'submission',verb:planVerb(plan)};
 }
-const planKindLabel=p=>(p&&p.kind==='review')?'AWPT review':'HESCO submission';
-const planVerb=p=>(p&&p.kind==='review')?'cleared':'issued';
+const planKindLabel=p=>(p&&p.kind==='review')?'Review':'Submission';
+const planVerb=p=>(p&&p.kind==='review')?'answered':'issued';
 function progressBar(p){
   const w=n=>p.total?(n/p.total*100):0;
   if(!p.started)return `<div class="pgwrap">
@@ -2055,8 +2056,8 @@ function wirePlan(draw){
     msgBox('New weekly plan','',
       `<label class="fl">What does this week cover?</label>
        <select class="f big" id="pkind">
-         <option value="submission">HESCO issuing documents to AWPT</option>
-         <option value="review">AWPT clearing its review queue</option>
+         <option value="submission">Submissions — documents to be issued</option>
+         <option value="review">Reviews — documents waiting on a response</option>
        </select>
        <div class="hint" style="margin:9px 0">Weeks run Saturday to Thursday.
          A future week is fine — progress is only measured once it starts.</div>
@@ -2201,9 +2202,11 @@ function openPicker(planId,draw){
   const review=plan&&plan.kind==='review';
   const pool=()=>AB.filter(r=>!on.has(r.id));
   // a review week should default to what AWPT is actually holding
-  let q='', only=review?'awpt':'ns';
+  let q='', only=review?'inreview':'ns';
   const match=r=>{
+    if(only==='inreview'&&!(r.holder==='AWPT'||r.holder==='Maaden'))return false;
     if(only==='awpt'&&r.holder!=='AWPT')return false;
+    if(only==='maaden'&&r.holder!=='Maaden')return false;
     if(only==='hesco'&&r.holder!=='HESCO')return false;
     if(only==='open'&&!isOpen(r))return false;
     if(only==='ns'&&r.status!=='Not issued')return false;
@@ -2215,7 +2218,9 @@ function openPicker(planId,draw){
     <div class="planbar" style="margin-bottom:9px">
       <input class="f" id="pkq" placeholder="Search number, name or discipline" style="flex:1;min-width:180px" value="${esc(q)}">
       <select class="f" id="pkf" style="min-width:132px">
-        <option value="awpt"${only==='awpt'?' selected':''}>With AWPT now</option>
+        <option value="inreview"${only==='inreview'?' selected':''}>Under review now</option>
+        <option value="awpt"${only==='awpt'?' selected':''}>With AWPT only</option>
+        <option value="maaden"${only==='maaden'?' selected':''}>With Maaden only</option>
         <option value="hesco"${only==='hesco'?' selected':''}>With HESCO now</option>
         <option value="ns"${only==='ns'?' selected':''}>Not issued yet</option>
         <option value="open"${only==='open'?' selected':''}>Anything open</option>
@@ -3280,7 +3285,8 @@ function mobPlan(){
       <div class="dc-h"><span class="dc-no">${esc(r.ref||'—')}</span>
         <span class="pstate ${s.cls}">${esc(s.label)}</span></div>
       <h3 class="dc-t">${esc(r.title||'')}</h3>
-      <div class="dc-m"><span>${esc(SHORT_DISC[r.discipline]||r.discipline||'')}</span>
+      <div class="dc-m"><span>${plan&&plan.kind==='review'&&it.baseHolder
+          ?'With '+esc(it.baseHolder):esc(SHORT_DISC[r.discipline]||r.discipline||'')}</span>
         <i class="sep"></i><span>${it.assigneeId?esc(assigneeName(it.assigneeId)):'Not assigned'}</span>
         ${it.plannedDate?`<i class="sep"></i><span class="rev">${esc(it.plannedDate)}</span>`:''}</div>
     </article>`;};
@@ -3375,8 +3381,8 @@ function mobPlanNew(){
     `<div class="hint" style="margin-bottom:9px">Weeks run Saturday to Thursday.</div>
      <label class="fl">What does this week cover?</label>
      <select class="f big" id="pkind" style="margin-bottom:10px">
-       <option value="submission">HESCO issuing documents to AWPT</option>
-       <option value="review">AWPT clearing its review queue</option>
+       <option value="submission">Submissions — documents to be issued</option>
+       <option value="review">Reviews — documents waiting on a response</option>
      </select>
      ${weekSelectHTML(first?first.ws:weekStartOf(today))}
      <input class="f" id="mpn" placeholder="A note, optional" style="width:100%;padding:11px;font-size:15px">`,
