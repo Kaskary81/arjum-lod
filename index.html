@@ -517,6 +517,18 @@ table.histtbl .mono{font-family:var(--mono);font-size:11px}
 body.mobile table.histtbl{font-size:11.5px}
 body.mobile table.histtbl th:nth-child(4),body.mobile table.histtbl td:nth-child(4){display:none}
 
+.hlist{display:flex;flex-direction:column;gap:1px}
+.hrow{display:flex;align-items:center;gap:11px;padding:9px 2px;border-bottom:1px solid var(--m-line)}
+.hrow:last-child{border-bottom:none}
+.hrev{flex:none;width:52px;font-family:var(--mono);font-size:13px;font-weight:700;line-height:1.2}
+.hmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.hdates{display:flex;align-items:baseline;gap:6px;font-family:var(--mono);font-size:11.5px;flex-wrap:wrap}
+.hdates span{color:var(--m-ink3)}
+.hdays{flex:none;text-align:right;font-family:var(--mono);font-size:14px;font-weight:700}
+.hdays i{display:block;font-style:normal;font-family:var(--sans);font-size:9px;font-weight:600;
+  letter-spacing:.05em;text-transform:uppercase;color:var(--m-ink3);margin-top:2px}
+.hdays.out{color:#f0b429}
+
 /* ---- printed report ---- */
 @media print{
   #printroot table.rtbl{table-layout:fixed;width:100%;font-size:7.4pt}
@@ -919,7 +931,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v8';
+const BUILD='LOD 2026-08-15 · v10';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1327,7 +1339,10 @@ function wireGrid(){
     const w=[...WINS.values()].find(x=>x.kind==='hist')||
       createWindow('hist','Submission history','',null,null,660,520);
     w.el.querySelector('.wt').innerHTML=esc(r.ref)+'<small>'+esc(r.title)+'</small>';
-    w.body.innerHTML='<div class="dash"><div class="panel">'+historyHTML(r)+'</div></div>';
+    w.body.innerHTML='<div class="dash"><div class="panel">'+
+      (canEdit()?'<div class="planbar" style="margin-bottom:11px"><button class="btn primary" id="hlog">Log a submission</button></div>':'')+
+      historyHTML(r)+'</div></div>';
+    const lb=w.body.querySelector('#hlog'); if(lb)lb.onclick=()=>logCycle(r);
     focusWin(w.id);};
   $('gtalk').onclick=()=>{const r=GRID.rows[GRID.cur.r];
     if(r)openDiscussion(r); else toast('Pick a row first');};
@@ -3154,7 +3169,10 @@ function mobOne(){
       <h3 class="dc-t" style="-webkit-line-clamp:4">${esc(r.title)}</h3></div>
     <div class="spec"><h4>Details</h4>${show.map(row).join('')}</div>
     <div class="spec"><h4>Submission history</h4>
-      <div style="padding:12px 14px">${historyHTML(r)}</div></div>
+      <div style="padding:12px 14px">
+        ${canEdit()?`<button class="btn primary" id="mlogcyc"
+           style="width:100%;padding:11px;border-radius:11px;margin-bottom:12px">Log a submission</button>`:''}
+        ${historyHTML(r)}</div></div>
     <div class="spec"><h4>Discussion${CCOUNT[r.id]?' ('+CCOUNT[r.id]+')':''}</h4>
       <div style="padding:12px 14px" id="mdisc">${commentsHTML(r.id)}${composerHTML(r.id)}</div></div>
     ${canEdit()?`<button class="btn danger" id="mdel"
@@ -3386,6 +3404,8 @@ function wireMob(){
   if(pv)pv.onclick=()=>{PLAN_VIEW=PLAN_VIEW==='gantt'?'table':'gantt';mobRender();};
   const pm=document.getElementById('mpmore');
   if(pm)pm.onclick=()=>mobPlanManage();
+  const lg=document.getElementById('mlogcyc');
+  if(lg&&MOB.view==='one'){const r=AB.find(x=>x.id===MOB.id); if(r)lg.onclick=()=>logCycle(r);}
   b.querySelectorAll('[data-pi]').forEach(el=>{
     el.onclick=()=>mobPlanItem(+el.dataset.pi);
     if(canEdit())attachSwipe(el,{onLeft:()=>mobPlanRemove(+el.dataset.pi)});});
@@ -3611,15 +3631,123 @@ async function _oldLoadRevs(){
   }catch(e){ REVS={}; }
 }
 function revsOf(id){ return REVS[id]||[]; }
+
+/* ---------- log a new submission cycle ---------- */
+function nextRev(docId,leg){
+  const rows=(HIST[docId]||[]).filter(x=>x.leg===leg);
+  const nums=rows.map(x=>{const m=/(\d+)/.exec(x.rev||'');return m?+m[1]:-1;});
+  const top=nums.length?Math.max(...nums):-1;
+  if(leg==='HESCO')return top<0?'V0':'V'+String(top+1).padStart(2,'0');
+  return 'A'+String((top<0?0:top)+1).padStart(2,'0');
+}
+const OUTCOMES={
+  HESCO:['','Under AWPT review','RWC'],
+  Maaden:['','Code A','Code B','Deemed','Rejected']
+};
+function logCycle(r){
+  if(!canEdit())return toast('Your account cannot edit');
+  const leg0='Maaden';
+  const form=leg=>`
+    <label class="fl">Which step?</label>
+    <select class="f big" id="lgLeg">
+      <option value="HESCO"${leg==='HESCO'?' selected':''}>HESCO sent it to AWPT</option>
+      <option value="Maaden"${leg==='Maaden'?' selected':''}>AWPT issued it to Maaden</option>
+    </select>
+    <label class="fl">Revision</label>
+    <input class="f big" id="lgRev" value="${esc(nextRev(r.id,leg))}">
+    <label class="fl">Date sent</label>
+    <input class="f big" id="lgSent" type="date" value="${today}">
+    <label class="fl">Reply received (leave blank if still out)</label>
+    <input class="f big" id="lgResp" type="date" value="">
+    <label class="fl">Outcome</label>
+    <select class="f big" id="lgOut">
+      ${OUTCOMES[leg].map(o=>`<option value="${esc(o)}">${o?esc(o):'— no reply yet —'}</option>`).join('')}
+    </select>
+    <div class="hint" id="lgNote" style="margin-top:10px"></div>`;
+  const note=()=>{
+    const leg=document.getElementById('lgLeg').value;
+    const resp=document.getElementById('lgResp').value;
+    const out=document.getElementById('lgOut').value;
+    const el=document.getElementById('lgNote'); if(!el)return;
+    let holder,status;
+    if(leg==='Maaden'){ holder=resp?(['Code A','Code B','Deemed'].includes(out)?'Closed':'HESCO'):'Maaden';
+      status=resp?(out||'Under review'):'Under review'; }
+    else { holder=resp?'HESCO':'AWPT'; status=resp?(out||'RWC'):'Under AWPT review'; }
+    el.innerHTML=`This will set <b>ball in court</b> to <b>${esc(holder)}</b>
+      and <b>status</b> to <b>${esc(status)}</b>, and restart the day count.`;
+  };
+  const rebuild=()=>{
+    const leg=document.getElementById('lgLeg').value;
+    const box=document.getElementById('lgWrap');
+    box.innerHTML=form(leg); wire();
+  };
+  const wire=()=>{
+    const L=document.getElementById('lgLeg');
+    L.onchange=rebuild;
+    ['lgResp','lgOut'].forEach(id=>{const e=document.getElementById(id);if(e)e.onchange=note;});
+    note();
+  };
+  msgBox('Log a submission','',`<div id="lgWrap">${form(leg0)}</div>`,
+    [['Cancel',null,''],['Save',async()=>{
+      const leg=document.getElementById('lgLeg').value;
+      const rev=document.getElementById('lgRev').value.trim();
+      const sent=document.getElementById('lgSent').value;
+      const resp=document.getElementById('lgResp').value;
+      const out=document.getElementById('lgOut').value;
+      if(!rev||!sent)return toast('A revision and a date sent are needed');
+      let holder,status;
+      if(leg==='Maaden'){ holder=resp?(['Code A','Code B','Deemed'].includes(out)?'Closed':'HESCO'):'Maaden';
+        status=resp?(out||'Under review'):'Under review'; }
+      else { holder=resp?'HESCO':'AWPT'; status=resp?(out||'RWC'):'Under AWPT review'; }
+      try{
+        await api('lod_history',{method:'POST',body:JSON.stringify({
+          docId:r.id,leg,rev,submitted:sent,responded:resp||'',status:leg==='Maaden'?(out||''):'',
+          days:(resp&&sent&&resp>=sent)?days(sent,resp):null,
+          source:(USER&&USER.email)||'app'})});
+        const patch={holder,status,heldSince:resp||sent};
+        if(leg==='Maaden'){ patch.issuedDate=sent; if(resp)patch.respondedDate=resp; }
+        await apiUpdate(r.id,patch);
+        Object.assign(r,patch);
+        await logAct('edit',r,'submission','',leg+' '+rev+' '+sent);
+        await loadRevs();
+        if(MOBILE)mobRender(); else refresh();
+        toast(rev+' logged — now with '+holder);
+      }catch(e){
+        if(e&&e.cur){ Object.assign(r,e.cur);
+          msgBox('Someone else changed this document','',
+            'Your submission was not logged because the document moved on. Reopen it and try again.',
+            [['OK',null,'primary']]); }
+        else toast('Could not log that submission');
+      }
+    },'primary']]);
+  wire();
+}
+
 function historyHTML(r){
   const all=(HIST[r.id]||[]);
   if(!all.length)return '<div class="empty">No submission history recorded.</div>';
-  const leg=(name,rows,label,who)=>{
+  const block=(rows,label,who)=>{
     if(!rows.length)return '';
     const closed=rows.filter(x=>x.days!=null);
     const avg=closed.length?Math.round(closed.reduce((t,x)=>t+x.days,0)/closed.length):null;
-    return `<div class="legblock"><h5>${label}<span>${rows.length} submission${rows.length===1?'':'s'}${
-        avg!=null?' · '+avg+' days average':''}</span></h5>
+    const head=`<h5>${label}<span>${rows.length} submission${rows.length===1?'':'s'}${
+      avg!=null?' · '+avg+' days average':''}</span></h5>`;
+    if(MOBILE){
+      // one block per cycle — five columns will not read on a phone
+      return `<div class="legblock">${head}<div class="hlist">${rows.map(x=>{
+        const out=x.days==null&&x.submitted&&!x.responded;
+        return `<div class="hrow">
+          <div class="hrev">${esc(x.rev)}</div>
+          <div class="hmid">
+            <div class="hdates"><b>${esc(x.submitted)||'—'}</b><span>→</span>
+              <b>${x.responded?esc(x.responded):'<span class="hint">awaiting</span>'}</b></div>
+            ${x.status?`<span class="pstate st-due">${esc(x.status)}</span>`:''}
+          </div>
+          <div class="hdays ${out?'out':''}">${x.days!=null?x.days+'d'
+            :(out?days(x.submitted,today)+'d':'—')}<i>${out?'so far':'days'}</i></div>
+        </div>`;}).join('')}</div></div>`;
+    }
+    return `<div class="legblock">${head}
       <table class="histtbl"><thead><tr><th>Rev</th><th>Sent</th><th>${who}</th>
         <th>Outcome</th><th style="text-align:right">Days</th></tr></thead><tbody>
       ${rows.map(x=>`<tr>
@@ -3630,8 +3758,8 @@ function historyHTML(r){
         <td style="text-align:right" class="mono">${x.days!=null?x.days:
           (x.submitted&&!x.responded?days(x.submitted,today)+'<span class="hint">+</span>':'—')}</td>
       </tr>`).join('')}</tbody></table></div>`;};
-  return leg('HESCO',all.filter(x=>x.leg==='HESCO'),'HESCO → AWPT','AWPT replied')+
-         leg('Maaden',all.filter(x=>x.leg==='Maaden'),'AWPT → Maaden','Maaden replied')+
+  return block(all.filter(x=>x.leg==='HESCO'),'HESCO → AWPT','AWPT replied')+
+         block(all.filter(x=>x.leg==='Maaden'),'AWPT → Maaden','Maaden replied')+
          `<div class="hint" style="margin-top:7px">HESCO cycles from the LOD · Maaden cycles from the submittal log</div>`;
 }
 function _oldHistoryHTML(r){
