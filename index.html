@@ -949,7 +949,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v23';
+const BUILD='LOD 2026-08-15 · v25';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2006,7 +2006,7 @@ async function openPlans(){
   const w=createWindow('plan','Submission plan','who is sending what, and when',null,null,880,560);
   w.body.innerHTML='<div class="dash"><div class="hint">Loading…</div></div>';
   await loadPlanning();
-  if(!PLAN_CUR||!PLANS.some(p=>p.id===PLAN_CUR))PLAN_CUR=PLANS.length?PLANS[0].id:null;
+  syncPlanKind();
   const draw=async()=>{
     syncPlanKind();
     const current=PLAN_CUR;
@@ -2053,7 +2053,8 @@ async function openPlans(){
         </tbody></table>`
         :'<div class="empty"><b>Nothing planned for this week</b>Select documents in the register, then press “Add selected documents”.</div>'}
       </div>`:''}
-      ${!plan?`<div class="empty"><b>No plans yet</b>Press “New week” to start one.</div>`:''}
+      ${!plan?`<div class="empty"><b>No ${PLAN_KIND==='review'?'review':'submission'} weeks yet</b>
+        Press “New week” to start one in this category.</div>`:''}
       <div class="panel"><h3>Who can be given work</h3>
         <div class="alist">${ASSIGNEES.map(a=>`<span class="atag">${esc(a.name)}${
           a.role?`<i>${esc(a.role)}</i>`:''}</span>`).join('')||'<span class="hint">Nobody on the list yet.</span>'}
@@ -3119,8 +3120,8 @@ function mobGo(view,id){MOB.stack.push({view:MOB.view,id:MOB.id,q:MOB.q,f:MOB.f}
 function mobBack(){const p=MOB.stack.pop();if(!p)return;Object.assign(MOB,p);mobRender();}
 function mobTab(v){MOB.stack=[];MOB.view=v;MOB.id=null;MOB.q='';MOB.f='';MOB.fs='';MOB.fd='';MOB.fage=null;MOB.fageL='';
   if(v!=='reg'){MOB.pick=false;PICKED.clear();}
-  if(v==='plan'&&PLANS.length){ if(!PLAN_CUR)PLAN_CUR=PLANS[0].id;
-    if(!PITEMS[PLAN_CUR])loadPlanItems(PLAN_CUR).then(mobRender); }
+  if(v==='plan'){ syncPlanKind();
+    if(PLAN_CUR&&!PITEMS[PLAN_CUR])loadPlanItems(PLAN_CUR).then(mobRender); }
   const b=document.getElementById('mbody');if(b)b.scrollTop=0;mobRender();}
 function mobRender(){
   if(!MOBILE)return;
@@ -3131,7 +3132,8 @@ function mobRender(){
   if(MOB.view==='reg')sub=AB.length+' documents';
   if(MOB.view==='late')sub='Past their target date';
   if(MOB.view==='plan'){const p=PLANS.find(x=>x.id===PLAN_CUR);
-    sub=p?weekLabel(p.weekStart):'No plan yet';}
+    sub=p?weekLabel(p.weekStart)+' · '+planKindLabel(p)
+        :(PLAN_KIND==='review'?'AWPT review — no weeks yet':'HESCO submissions — no weeks yet');}
   const mt=document.getElementById('mtitle');
   mt.textContent=ttl; mt.classList.toggle('mono',mono);
   document.getElementById('msub').textContent=sub;
@@ -3306,7 +3308,17 @@ function mobPlan(){
     `<div class="empty"><b>No plan yet</b>${canEdit()
       ?'Create one from the desktop layout, or tap New week below.':'Ask an editor to set one up.'}</div>
      ${canEdit()?'<button class="btn primary" id="mpnew" style="width:100%;padding:12px;border-radius:12px">New week</button>':''}`;
-  if(!PLAN_CUR||!PLANS.some(p=>p.id===PLAN_CUR))PLAN_CUR=PLANS[0].id;
+  syncPlanKind();
+  const kindTabs=`<div class="kindtabs">${KINDS.map(([k,label])=>
+    `<button class="kindtab${PLAN_KIND===k?' on':''}" data-mkind="${k}">${label}
+      <i>${plansOfKind(k).length} week${plansOfKind(k).length===1?'':'s'}</i></button>`).join('')}</div>`;
+  if(!PLAN_CUR){
+    return offBar()+kindTabs+
+      `<div class="empty"><b>No ${PLAN_KIND==='review'?'review':'submission'} weeks yet</b>
+        ${canEdit()?'Use ⋯ → New week to start one.':'Ask an editor to set one up.'}</div>
+       ${canEdit()?`<div class="mcount"><span class="n">&nbsp;</span>
+         <button id="mpmore" aria-label="Manage plans">⋯</button></div>`:''}`;
+  }
   const items=PITEMS[PLAN_CUR]||[];
   const p=planProgress(PLAN_CUR);
   const plan=PLANS.find(x=>x.id===PLAN_CUR);
@@ -3324,9 +3336,7 @@ function mobPlan(){
         ${it.plannedDate?`<i class="sep"></i><span class="rev">${esc(it.plannedDate)}</span>`:''}</div>
     </article>`;};
   return offBar()+`
-    <div class="kindtabs">${KINDS.map(([k,label])=>
-      `<button class="kindtab${PLAN_KIND===k?' on':''}" data-mkind="${k}">${label}
-        <i>${plansOfKind(k).length} week${plansOfKind(k).length===1?'':'s'}</i></button>`).join('')}</div>
+    ${kindTabs}
     <select class="f" id="mpweek" style="width:100%;margin-bottom:12px;padding:10px;border-radius:11px">
       ${plansOfKind(PLAN_KIND).map(x=>`<option value="${x.id}"${x.id===PLAN_CUR?' selected':''}>${
         esc(weekLabel(x.weekStart))}${x.name?' · '+esc(x.name):''}</option>`).join('')
@@ -3455,7 +3465,8 @@ function mobPlanDelete(p){
       await api('lod_plans?id=eq.'+p.id,{method:'PATCH',body:JSON.stringify({deletedAt:nowTs()})});
       delete PITEMS[p.id]; PLAN_CUR=null;
       await loadPlanning();
-      if(PLANS.length){PLAN_CUR=PLANS[0].id;await loadPlanItems(PLAN_CUR);}
+      syncPlanKind();
+      if(PLAN_CUR)await loadPlanItems(PLAN_CUR);
       mobRender(); toast('Plan deleted');},'danger']]);
 }
 
