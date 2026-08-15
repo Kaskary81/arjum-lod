@@ -938,7 +938,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v20';
+const BUILD='LOD 2026-08-15 · v21';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1076,7 +1076,7 @@ async function setCell(row,k,val,silent){
         [['OK',null,'primary']]);
     } else toast('Not saved — check your connection');
     console.error(e); refresh(); return; }
-  if(!silent){ await loadRevs(); refresh(); }
+  if(!silent){ await loadRevsFor(row.id); refresh(); }
 }
 
 /* ---------------- column prefs ---------------- */
@@ -3734,6 +3734,10 @@ async function loadRevs(){
     HIST={}; h.forEach(x=>{ (HIST[x.docId]=HIST[x.docId]||[]).push(x); });
   }catch(e){ HIST={}; }
 }
+async function loadRevsFor(id){
+  try{ HIST[id]=await api('lod_history?docId=eq.'+id+'&order=leg.asc,rev.asc,submitted.asc'); }
+  catch(e){}
+}
 async function _oldLoadRevs(){
   try{
     const r=await api('lod_revisions?order=id.asc&limit=5000');
@@ -3787,7 +3791,7 @@ function editHistRow(r,id){
         await api('lod_history?id=eq.'+id,{method:'PATCH',body:JSON.stringify({
           submitted:sent,responded:resp,status:out,
           days:(sent&&resp&&resp>=sent)?days(sent,resp):null})});
-        await loadRevs();
+        await loadRevsFor(r.id);
         const fresh=await api('lod_docs?id=eq.'+r.id+'&limit=1');
         if(fresh&&fresh[0])Object.assign(r,fresh[0]);
         if(MOBILE)mobRender(); else refresh();
@@ -3814,7 +3818,7 @@ function removeHistRow(r,id){
     [['Keep it',null,''],['Remove',async()=>{
       try{
         await api('lod_history?id=eq.'+id,{method:'DELETE'});
-        await loadRevs();
+        await loadRevsFor(r.id);
         // put the document back in step with whatever cycle is now the latest
         const left=(HIST[r.id]||[]).filter(x=>x.submitted)
           .sort((a,b)=>String(a.submitted).localeCompare(String(b.submitted)));
@@ -3911,8 +3915,8 @@ function logCycle(r){
         // set only what the app owns, then read the row back so nothing is stale
         const patch={holder,status,heldSince:resp||sent};
         await apiUpdate(r.id,patch);
-        await logAct('edit',r,'submission','',leg+' '+rev+' '+sent);
-        await loadRevs();
+        logAct('edit',r,'submission','',leg+' '+rev+' '+sent);
+        await loadRevsFor(r.id);
         const fresh=await api('lod_docs?id=eq.'+r.id+'&limit=1');
         if(fresh&&fresh[0])Object.assign(r,fresh[0]); else Object.assign(r,patch);
         if(MOBILE)mobRender(); else refresh();
