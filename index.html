@@ -931,7 +931,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v11';
+const BUILD='LOD 2026-08-15 · v12';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1343,6 +1343,8 @@ function wireGrid(){
       (canEdit()?'<div class="planbar" style="margin-bottom:11px"><button class="btn primary" id="hlog">Log a submission</button></div>':'')+
       historyHTML(r)+'</div></div>';
     const lb=w.body.querySelector('#hlog'); if(lb)lb.onclick=()=>logCycle(r);
+    if(canEdit())w.body.querySelectorAll('[data-hid]').forEach(el=>
+      el.onclick=()=>editHistRow(r,+el.dataset.hid));
     focusWin(w.id);};
   $('gtalk').onclick=()=>{const r=GRID.rows[GRID.cur.r];
     if(r)openDiscussion(r); else toast('Pick a row first');};
@@ -3408,6 +3410,9 @@ function wireMob(){
   if(pm)pm.onclick=()=>mobPlanManage();
   const lg=document.getElementById('mlogcyc');
   if(lg&&MOB.view==='one'){const r=AB.find(x=>x.id===MOB.id); if(r)lg.onclick=()=>logCycle(r);}
+  if(MOB.view==='one'){const rr=AB.find(x=>x.id===MOB.id);
+    if(rr&&canEdit())b.querySelectorAll('[data-hid]').forEach(el=>
+      el.onclick=()=>editHistRow(rr,+el.dataset.hid));}
   b.querySelectorAll('[data-pi]').forEach(el=>{
     el.onclick=()=>mobPlanItem(+el.dataset.pi);
     if(canEdit())attachSwipe(el,{onLeft:()=>mobPlanRemove(+el.dataset.pi)});});
@@ -3646,6 +3651,58 @@ const OUTCOMES={
   HESCO:['','Under AWPT review','RWC'],
   Maaden:['','Code A','Code B','Deemed','Rejected']
 };
+function editHistRow(r,id){
+  if(!canEdit())return toast('Your account cannot edit');
+  const all=(HIST[r.id]||[]);
+  const c=all.find(x=>x.id===id); if(!c)return;
+  const same=all.filter(x=>x.leg===c.leg);
+  const isLatest=!same.some(x=>String(x.submitted||'')>String(c.submitted||''));
+  msgBox((c.leg==='HESCO'?'HESCO → AWPT':'AWPT → Maaden')+' · '+(c.rev||''),'',
+    `<div class="itemhd">${esc(r.title||'')}<span>${esc(r.docNumber||r.ref||'')}</span></div>
+     <label class="fl">Sent</label>
+     <input class="f big" id="ehSent" type="date" value="${esc(c.submitted||'')}">
+     <label class="fl">Reply received</label>
+     <input class="f big" id="ehResp" type="date" value="${esc(c.responded||'')}">
+     <label class="fl">Outcome</label>
+     <input class="f big" id="ehOut" value="${esc(c.status||'')}" placeholder="e.g. Approved With Comments">
+     <div class="hint" style="margin-top:10px">${isLatest&&c.leg==='Maaden'
+       ? 'This is the latest trip to Maaden, so the document\'s Issued and Responded dates follow it.'
+       : 'An earlier cycle — the document\'s own dates are unaffected.'}</div>`,
+    [['Remove this cycle',()=>removeHistRow(r,id),'danger'],['Save',async()=>{
+      const sent=document.getElementById('ehSent').value;
+      const resp=document.getElementById('ehResp').value;
+      const out=document.getElementById('ehOut').value.trim();
+      try{
+        await api('lod_history?id=eq.'+id,{method:'PATCH',body:JSON.stringify({
+          submitted:sent,responded:resp,status:out,
+          days:(sent&&resp&&resp>=sent)?days(sent,resp):null})});
+        await loadRevs();
+        const fresh=await api('lod_docs?id=eq.'+r.id+'&limit=1');
+        if(fresh&&fresh[0])Object.assign(r,fresh[0]);
+        if(MOBILE)mobRender(); else refresh();
+        toast((c.rev||'Cycle')+' updated');
+      }catch(e){ toast('Could not save that cycle'); }
+    },'primary']]);
+}
+function removeHistRow(r,id){
+  const c=(HIST[r.id]||[]).find(x=>x.id===id); if(!c)return;
+  msgBox('Remove '+(c.rev||'this cycle')+'?','',
+    `<b>${esc(r.title||'')}</b><br><br>
+     ${c.leg==='HESCO'?'HESCO → AWPT':'AWPT → Maaden'} · sent ${esc(c.submitted||'—')}${
+       c.responded?', replied '+esc(c.responded):''}.<br><br>
+     ${c.leg==='Maaden'?'If this is the latest trip to Maaden, the document\'s Issued and Responded dates will fall back to the one before it.<br><br>':''}
+     <b>This cannot be undone.</b>`,
+    [['Keep it',null,''],['Remove',async()=>{
+      try{
+        await api('lod_history?id=eq.'+id,{method:'DELETE'});
+        await loadRevs();
+        const fresh=await api('lod_docs?id=eq.'+r.id+'&limit=1');
+        if(fresh&&fresh[0])Object.assign(r,fresh[0]);
+        if(MOBILE)mobRender(); else refresh();
+        toast((c.rev||'Cycle')+' removed');
+      }catch(e){ toast('Could not remove that cycle'); }
+    },'danger']]);
+}
 function logCycle(r){
   if(!canEdit())return toast('Your account cannot edit');
   const leg0='Maaden';
@@ -3738,7 +3795,7 @@ function historyHTML(r){
       // one block per cycle — five columns will not read on a phone
       return `<div class="legblock">${head}<div class="hlist">${rows.map(x=>{
         const out=x.days==null&&x.submitted&&!x.responded;
-        return `<div class="hrow">
+        return `<div class="hrow" data-hid="${x.id}">
           <div class="hrev">${esc(x.rev)}</div>
           <div class="hmid">
             <div class="hdates"><b>${esc(x.submitted)||'—'}</b><span>→</span>
@@ -3752,7 +3809,7 @@ function historyHTML(r){
     return `<div class="legblock">${head}
       <table class="histtbl"><thead><tr><th>Rev</th><th>Sent</th><th>${who}</th>
         <th>Outcome</th><th style="text-align:right">Days</th></tr></thead><tbody>
-      ${rows.map(x=>`<tr>
+      ${rows.map(x=>`<tr data-hid="${x.id}" style="cursor:pointer">
         <td class="mono">${esc(x.rev)}</td>
         <td class="mono">${esc(x.submitted)||'—'}</td>
         <td class="mono">${esc(x.responded)||'<span class="hint">awaiting</span>'}</td>
