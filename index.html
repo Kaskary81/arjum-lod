@@ -536,6 +536,17 @@ body.mobile table.histtbl th:nth-child(4),body.mobile table.histtbl td:nth-child
   letter-spacing:.05em;text-transform:uppercase;color:var(--m-ink3);margin-top:2px}
 .hdays.out{color:#f0b429}
 
+.kindtabs{display:flex;gap:8px;margin-bottom:11px}
+.kindtab{flex:1;border:1px solid var(--ring);background:var(--surface2);color:var(--ink2);
+  border-radius:11px;padding:9px 12px;font-size:12.5px;font-weight:650;cursor:pointer;
+  text-align:left;line-height:1.25}
+.kindtab i{display:block;font-style:normal;font-size:10px;font-weight:600;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--muted);margin-top:3px}
+.kindtab.on{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
+.kindtab.on i{color:var(--accent)}
+body.mobile .kindtab{background:var(--m-paper);border-color:var(--m-line);color:var(--m-ink2)}
+body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent);color:var(--m-ink)}
+
 /* ---- printed report ---- */
 @media print{
   #printroot table.rtbl{table-layout:fixed;width:100%;font-size:7.4pt}
@@ -938,7 +949,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v22';
+const BUILD='LOD 2026-08-15 · v23';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1960,6 +1971,14 @@ function planProgress(planId){
     kind:plan?plan.kind:'submission',verb:planVerb(plan)};
 }
 const planKindLabel=p=>(p&&p.kind==='review')?'Review':'Submission';
+const KINDS=[['submission','HESCO submissions'],['review','AWPT review']];
+const plansOfKind=k=>PLANS.filter(p=>(p.kind||'submission')===k);
+/* keep the selected week inside the selected category */
+function syncPlanKind(){
+  const list=plansOfKind(PLAN_KIND);
+  if(!list.some(p=>p.id===PLAN_CUR))PLAN_CUR=list.length?list[0].id:null;
+  return list;
+}
 const planVerb=p=>(p&&p.kind==='review')?'answered':'issued';
 function progressBar(p){
   const w=n=>p.total?(n/p.total*100):0;
@@ -1989,14 +2008,19 @@ async function openPlans(){
   await loadPlanning();
   if(!PLAN_CUR||!PLANS.some(p=>p.id===PLAN_CUR))PLAN_CUR=PLANS.length?PLANS[0].id:null;
   const draw=async()=>{
+    syncPlanKind();
     const current=PLAN_CUR;
     const items=current?await loadPlanItems(current):[];
     const plan=PLANS.find(p=>p.id===current);
     w.body.innerHTML=`<div class="dash">
+      <div class="kindtabs">${KINDS.map(([k,label])=>
+        `<button class="kindtab${PLAN_KIND===k?' on':''}" data-kind="${k}">${label}
+          <i>${plansOfKind(k).length} week${plansOfKind(k).length===1?'':'s'}</i></button>`).join('')}</div>
       <div class="planbar">
-        <select class="f" id="pweek">${PLANS.map(p=>
+        <select class="f" id="pweek">${plansOfKind(PLAN_KIND).map(p=>
           `<option value="${p.id}"${p.id===current?' selected':''}>${esc(weekLabel(p.weekStart))}${
-            p.name?' · '+esc(p.name):''}</option>`).join('')||'<option>No plans yet</option>'}</select>
+            p.name?' · '+esc(p.name):''}</option>`).join('')
+          ||'<option>No '+(PLAN_KIND==='review'?'review':'submission')+' weeks yet</option>'}</select>
         <button class="btn" id="pnew"${canEdit()?'':' disabled'}>New week</button>
         <button class="btn" id="padd"${canEdit()&&current?'':' disabled'}>Add selected documents</button>
         <button class="btn" id="pview">${PLAN_VIEW==='gantt'?'Table':'Gantt'}</button>
@@ -2052,8 +2076,8 @@ function wirePlan(draw){
     msgBox('New weekly plan','',
       `<label class="fl">What does this week cover?</label>
        <select class="f big" id="pkind">
-         <option value="submission">Submissions — documents to be issued</option>
-         <option value="review">Reviews — documents waiting on a response</option>
+         <option value="submission"${PLAN_KIND==='submission'?' selected':''}>HESCO submissions — documents to be issued</option>
+         <option value="review"${PLAN_KIND==='review'?' selected':''}>AWPT review — documents waiting on a response</option>
        </select>
        <div class="hint" style="margin:9px 0">Weeks run Saturday to Thursday.
          A future week is fine — progress is only measured once it starts.</div>
@@ -2079,6 +2103,10 @@ function wirePlan(draw){
         } finally { _planBusy=false; }
       },'primary']]);};
   if($('padd'))$('padd').onclick=()=>openPicker(PLAN_CUR,draw);
+  w.body.querySelectorAll('[data-kind]').forEach(b=>b.onclick=async()=>{
+    PLAN_KIND=b.dataset.kind; PLAN_CUR=null; syncPlanKind();
+    if(PLAN_CUR)await loadPlanItems(PLAN_CUR);
+    await draw();});
   if($('pview'))$('pview').onclick=async()=>{PLAN_VIEW=PLAN_VIEW==='gantt'?'table':'gantt';await draw();};
   w.body.querySelectorAll('.grow[data-pi]').forEach(el=>el.onclick=()=>{
     const it=(PITEMS[PLAN_CUR]||[]).find(x=>x.id===+el.dataset.pi);
@@ -2263,6 +2291,7 @@ function openPicker(planId,draw){
    whichever is later) to its target date, with the target marked. Colour
    carries the state, so slippage is visible without reading a table. */
 let PLAN_VIEW='table';
+let PLAN_KIND='submission';
 
 function ganttHTML(planId){
   const plan=PLANS.find(p=>p.id===planId), items=PITEMS[planId]||[];
@@ -3272,6 +3301,7 @@ function mobOne(){
       style="width:100%;padding:12px;border-radius:12px;font-weight:650">Delete this document</button>`:''}`;
 }
 function mobPlan(){
+  syncPlanKind();
   if(!PLANS.length)return offBar()+
     `<div class="empty"><b>No plan yet</b>${canEdit()
       ?'Create one from the desktop layout, or tap New week below.':'Ask an editor to set one up.'}</div>
@@ -3294,9 +3324,13 @@ function mobPlan(){
         ${it.plannedDate?`<i class="sep"></i><span class="rev">${esc(it.plannedDate)}</span>`:''}</div>
     </article>`;};
   return offBar()+`
+    <div class="kindtabs">${KINDS.map(([k,label])=>
+      `<button class="kindtab${PLAN_KIND===k?' on':''}" data-mkind="${k}">${label}
+        <i>${plansOfKind(k).length} week${plansOfKind(k).length===1?'':'s'}</i></button>`).join('')}</div>
     <select class="f" id="mpweek" style="width:100%;margin-bottom:12px;padding:10px;border-radius:11px">
-      ${PLANS.map(x=>`<option value="${x.id}"${x.id===PLAN_CUR?' selected':''}>${esc(weekLabel(x.weekStart))} · ${
-        esc(planKindLabel(x))}${x.name?' · '+esc(x.name):''}</option>`).join('')}</select>
+      ${plansOfKind(PLAN_KIND).map(x=>`<option value="${x.id}"${x.id===PLAN_CUR?' selected':''}>${
+        esc(weekLabel(x.weekStart))}${x.name?' · '+esc(x.name):''}</option>`).join('')
+        ||'<option>No weeks in this category yet</option>'}</select>
     <div class="panel"><div class="phase ph-${ph.k}" style="margin-bottom:10px">${esc(ph.label)}</div>
       <div class="phase ph-kind" style="margin:0 0 10px 6px">${esc(planKindLabel(plan))}</div>
       ${progressBar(p)}</div>
@@ -3384,8 +3418,8 @@ function mobPlanNew(){
     `<div class="hint" style="margin-bottom:9px">Weeks run Saturday to Thursday.</div>
      <label class="fl">What does this week cover?</label>
      <select class="f big" id="pkind" style="margin-bottom:10px">
-       <option value="submission">Submissions — documents to be issued</option>
-       <option value="review">Reviews — documents waiting on a response</option>
+       <option value="submission"${PLAN_KIND==='submission'?' selected':''}>HESCO submissions — documents to be issued</option>
+       <option value="review"${PLAN_KIND==='review'?' selected':''}>AWPT review — documents waiting on a response</option>
      </select>
      ${weekSelectHTML(first?first.ws:weekStartOf(today))}
      <input class="f" id="mpn" placeholder="A note, optional" style="width:100%;padding:11px;font-size:15px">`,
@@ -3498,6 +3532,10 @@ function wireMob(){
   if(mpk)mpk.onclick=()=>{MOB.pick=!MOB.pick; if(!MOB.pick)PICKED.clear(); mobRender();};
   const mt=document.getElementById('mtoplan');
   if(mt)mt.onclick=()=>addPickedToPlan();
+  b.querySelectorAll('[data-mkind]').forEach(el=>el.onclick=async()=>{
+    PLAN_KIND=el.dataset.mkind; PLAN_CUR=null; syncPlanKind();
+    if(PLAN_CUR&&!PITEMS[PLAN_CUR])await loadPlanItems(PLAN_CUR);
+    mobRender();});
   const wk=document.getElementById('mpweek');
   if(wk)wk.onchange=async()=>{PLAN_CUR=+wk.value;await loadPlanItems(PLAN_CUR);mobRender();};
   const pa=document.getElementById('mpadd');
