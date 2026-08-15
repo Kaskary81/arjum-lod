@@ -938,7 +938,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v21';
+const BUILD='LOD 2026-08-15 · v22';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1350,14 +1350,8 @@ function wireGrid(){
     if(!r)return toast('Pick a row first');
     const w=[...WINS.values()].find(x=>x.kind==='hist')||
       createWindow('hist','Submission history','',null,null,660,520);
-    w.el.querySelector('.wt').innerHTML=esc(r.ref)+'<small>'+esc(r.title)+'</small>';
-    w.body.innerHTML='<div class="dash"><div class="panel">'+
-      (canEdit()?'<div class="planbar" style="margin-bottom:11px"><button class="btn primary" id="hlog">Log a submission</button></div>':'')+
-      historyHTML(r)+'</div></div>';
-    const lb=w.body.querySelector('#hlog'); if(lb)lb.onclick=()=>logCycle(r);
-    if(canEdit())w.body.querySelectorAll('[data-hid]').forEach(el=>
-      el.onclick=()=>editHistRow(r,+el.dataset.hid));
-    focusWin(w.id);};
+    w.rowId=r.id;                    // so it can redraw itself after a change
+    paintCycles(w,r); focusWin(w.id);};
   $('gtalk').onclick=()=>{const r=GRID.rows[GRID.cur.r];
     if(r)openDiscussion(r); else toast('Pick a row first');};
   $('ghist').onclick=()=>{const r=GRID.rows[GRID.cur.r];if(r)openHistory(r);else toast('Pick a row first');};
@@ -2917,6 +2911,7 @@ function renderDash(){
   const sn=w.body.querySelector('#dsnap'); if(sn)sn.onclick=takeSnapshot;
 }
 function refresh(){ if(GRID&&GRID.win&&WINS.has(GRID.win.id))renderGrid(); renderDash(); renderDock();
+  refreshHistory();
   updateUndoBtns(); updateBell(); if(MOBILE)mobRender(); }
 
 /* ================= excel ================= */
@@ -3932,6 +3927,23 @@ function logCycle(r){
   wire();
 }
 
+function paintCycles(w,r){
+  w.el.querySelector('.wt').innerHTML=esc(r.docNumber||r.ref)+'<small>'+esc(r.title)+'</small>';
+  w.body.innerHTML='<div class="dash"><div class="panel">'+
+    (canEdit()?'<div class="planbar" style="margin-bottom:11px"><button class="btn primary" id="hlog">Log a submission</button></div>':'')+
+    historyHTML(r)+'</div></div>';
+  const lb=w.body.querySelector('#hlog'); if(lb)lb.onclick=()=>logCycle(r);
+  if(canEdit())w.body.querySelectorAll('[data-hid]').forEach(el=>
+    el.onclick=()=>editHistRow(r,+el.dataset.hid));
+}
+/* keep an open history window in step — otherwise a removed cycle lingers
+   until the window is closed and reopened */
+function refreshHistory(){
+  const w=[...WINS.values()].find(x=>x.kind==='hist');
+  if(!w||!w.rowId)return;
+  const r=AB.find(x=>x.id===w.rowId);
+  if(r)paintCycles(w,r);
+}
 function historyHTML(r){
   const all=(HIST[r.id]||[]);
   if(!all.length)return '<div class="empty">No submission history recorded.</div>';
