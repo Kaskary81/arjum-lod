@@ -3881,14 +3881,18 @@ function editHistRow(r,id){
      <label class="fl">Reply received</label>
      <input class="f big" id="ehResp" type="date" value="${esc(c.responded||'')}">
      <label class="fl">Outcome</label>
-     <input class="f big" id="ehOut" value="${esc(c.status||'')}" placeholder="e.g. Approved With Comments">
-     <div class="hint" style="margin-top:10px">${isLatest&&c.leg==='Maaden'
-       ? 'This is the latest trip to Maaden, so the document\'s Issued and Responded dates follow it.'
-       : 'An earlier cycle — the document\'s own dates are unaffected.'}</div>`,
+     <select class="f big" id="ehOut">
+       ${OUTCOMES[c.leg].map(o=>`<option value="${esc(o)}"${o===c.status?' selected':''}>${
+         o?esc(o):'— no reply yet —'}</option>`).join('')}
+       ${c.status&&!OUTCOMES[c.leg].includes(c.status)
+         ? `<option value="${esc(c.status)}" selected>${esc(c.status)}</option>`:''}
+     </select>
+     <div class="hint" style="margin-top:5px">${OUTCOME_HINT[c.leg]}</div>
+     <div class="hint" id="ehNote" style="margin-top:10px"></div>`,
     [['Remove this cycle',()=>removeHistRow(r,id),'danger'],['Save',async()=>{
       const sent=document.getElementById('ehSent').value;
       const resp=document.getElementById('ehResp').value;
-      const out=document.getElementById('ehOut').value.trim();
+      const out=resp?document.getElementById('ehOut').value.trim():'';
       try{
         await api('lod_history?id=eq.'+id,{method:'PATCH',body:JSON.stringify({
           submitted:sent,responded:resp,status:out,
@@ -3900,6 +3904,29 @@ function editHistRow(r,id){
         toast((c.rev||'Cycle')+' updated');
       }catch(e){ toast('Could not save that cycle'); }
     },'primary']]);
+  const enote=()=>{
+    const el=document.getElementById('ehNote'); if(!el)return;
+    const resp=document.getElementById('ehResp').value;
+    const sel=document.getElementById('ehOut');
+    sel.disabled=!resp; if(!resp)sel.value='';
+    const out=sel.value;
+    let st,hold;
+    if(c.leg==='Maaden'){
+      st=resp?(out||'Under review'):'Under review';
+      hold=['Code A','Code B','Deemed'].includes(st)?'Closed'
+           :st==='Rejected'?'HESCO':'Maaden';
+    } else {
+      st=resp?(out||'RWC'):'Under AWPT review';
+      hold=st==='RWC'?'HESCO':'AWPT';
+    }
+    el.innerHTML=isLatest
+      ? `As the latest cycle, the document will read <b>${esc(st)}</b> with
+         <b>${esc(hold)}</b> holding it.`
+      : 'An earlier cycle — the document keeps the status its latest cycle gives it.';
+  };
+  ['ehSent','ehResp','ehOut'].forEach(id=>{
+    const e=document.getElementById(id); if(e)e.onchange=enote;});
+  enote();
 }
 function removeHistRow(r,id){
   const c=(HIST[r.id]||[]).find(x=>x.id===id); if(!c)return;
