@@ -3865,7 +3865,7 @@ const OUTCOMES={
   Maaden:['','Code A','Code B','Rejected']      // the Client's codes
 };
 const OUTCOME_HINT={
-  HESCO:'RNC — reviewed, no comments (AWPT will issue it on). RWC — returned to HESCO with comments.',
+  HESCO:'RNC — AWPT reviewed with no comments; HESCO prepares the submittal to Maaden. RWC — returned to HESCO with comments.',
   Maaden:'Code A approved · Code B approved with comments · Rejected. Deemed approval is applied automatically after 10 working days on IFI documents.'
 };
 function editHistRow(r,id){
@@ -3917,7 +3917,7 @@ function editHistRow(r,id){
            :st==='Rejected'?'HESCO':'Maaden';
     } else {
       st=resp?(out||'RWC'):'Under AWPT review';
-      hold=st==='RWC'?'HESCO':'AWPT';
+      hold=resp?'HESCO':'AWPT';
     }
     el.innerHTML=isLatest
       ? `As the latest cycle, the document will read <b>${esc(st)}</b> with
@@ -3992,13 +3992,13 @@ function logCycle(r){
       holder=resp?(['Code A','Code B'].includes(out)?'Closed':'HESCO'):'Maaden';
       status=resp?(out||'Under review'):'Under review';
     } else {
-      holder=resp?(out==='RNC'?'AWPT':'HESCO'):'AWPT';
+      holder=resp?'HESCO':'AWPT';        // RNC or RWC, it goes back to HESCO
       status=resp?(out||'RWC'):'Under AWPT review';
     }
     el.innerHTML=`The document will read <b>${esc(status)}</b> with
       <b>${esc(holder)}</b> holding it, and the day count restarts.`+
       (leg==='HESCO'&&resp&&out==='RNC'
-        ?' AWPT has cleared it, so it stays with AWPT to issue onward.':'');
+        ?' AWPT has cleared it — HESCO now prepares the submittal to Maaden.':'');
   };
   const rebuild=()=>{
     const leg=document.getElementById('lgLeg').value;
