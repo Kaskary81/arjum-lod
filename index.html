@@ -1068,9 +1068,16 @@ const COLBY=Object.fromEntries(COLS.map(c=>[c.k,c]));
 let AB=[], LIVE=false, USER=null, MOBILE=false; let REVS={};
 let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{}, rowh:24};
 let NOTIFS=[], ACTS=[];
-const today=new Date().toISOString().slice(0,10);
+
+/* A date turned into yyyy-mm-dd must use LOCAL parts. toISOString() converts to
+   UTC first, so in Riyadh (UTC+3) local midnight lands on the previous day and
+   every daily figure is filed one day early. */
+const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
+  return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+
+         String(x.getDate()).padStart(2,'0');};
+const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-17 · v32';
+const BUILD='LOD 2026-08-17 · v33';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1955,10 +1962,10 @@ let ASSIGNEES=[], PLANS=[], PITEMS={};
 /* the working week here runs Saturday to Thursday */
 const WEEK_DAYS=6;
 const weekStartOf=d=>{const x=new Date(d);x.setDate(x.getDate()-((x.getDay()+1)%7));
-  return x.toISOString().slice(0,10);};
+  return isoDay(x);};
 const monday=weekStartOf;            /* kept so older calls still work */
 const weekEndOf=ws=>{const b=new Date(ws);b.setDate(b.getDate()+WEEK_DAYS-1);
-  return b.toISOString().slice(0,10);};
+  return isoDay(b);};
 const weekLabel=ws=>{
   const a=new Date(ws), b=new Date(weekEndOf(ws));
   const f=d=>d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
@@ -1969,7 +1976,7 @@ function weekOptions(back,fwd,kind){
   const out=[], base=new Date(weekStartOf(today));
   for(let i=-back;i<=fwd;i++){
     const d=new Date(base); d.setDate(d.getDate()+i*7);
-    const ws=d.toISOString().slice(0,10);
+    const ws=isoDay(d);
     const taken=PLANS.find(p=>p.weekStart===ws&&(p.kind||'submission')===k);
     out.push({ws,label:weekLabel(ws),taken:!!taken,planId:taken?taken.id:null,
       note:i===0?'this week':i===1?'next week':i===-1?'last week'
@@ -2440,7 +2447,7 @@ function ganttHTML(planId){
   const dates=items.map(i=>i.plannedDate).filter(Boolean);
   const lo=[ws,...dates].sort()[0];
   const hiRaw=[we,...dates,today].sort().pop();
-  const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x.toISOString().slice(0,10);};
+  const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return isoDay(x);};
   const start=addDays(lo,-1), end=addDays(hiRaw,1);
   const span=Math.max(1,days(start,end));
   const pos=d=>Math.max(0,Math.min(100,days(start,d)/span*100));
