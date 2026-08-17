@@ -951,7 +951,7 @@ let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{
 let NOTIFS=[], ACTS=[];
 const today=new Date().toISOString().slice(0,10);
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-15 · v29';
+const BUILD='LOD 2026-08-17 · v30';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2005,12 +2005,14 @@ function progressBar(p){
     </div></div>`;
 }
 
+let PLAN_DRAW=null;   /* the open plan's own redraw, so a change elsewhere can reach it */
 async function openPlans(){
   const w=createWindow('plan','Submission plan','who is sending what, and when',null,null,880,560);
   w.body.innerHTML='<div class="dash"><div class="hint">Loading…</div></div>';
   await loadPlanning();
   syncPlanKind();
   const draw=async()=>{
+    if(![...WINS.values()].some(x=>x.kind==='plan')){PLAN_DRAW=null;return;}
     syncPlanKind();
     const current=PLAN_CUR;
     const items=current?await loadPlanItems(current):[];
@@ -2071,6 +2073,7 @@ async function openPlans(){
       </div></div>`;
     wirePlan(draw);
   };
+  PLAN_DRAW=draw;
   await draw();
 }
 function wirePlan(draw){
@@ -2955,6 +2958,8 @@ function renderDash(){
 }
 function refresh(){ if(GRID&&GRID.win&&WINS.has(GRID.win.id))renderGrid(); renderDash(); renderDock();
   refreshHistory();
+  /* the plan reads each document's holder, so it goes stale the moment one moves */
+  if(PLAN_DRAW&&[...WINS.values()].some(x=>x.kind==='plan'))PLAN_DRAW();
   updateUndoBtns(); updateBell(); if(MOBILE)mobRender(); }
 
 /* ================= excel ================= */
