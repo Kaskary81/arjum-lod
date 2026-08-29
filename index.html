@@ -1162,7 +1162,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v42';
+const BUILD='LOD 2026-08-29 · v43';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1475,6 +1475,7 @@ function openRegister(){
   renderGrid();
   return w;
 }
+const DOCS=()=>legRows(AB);   /* the documents the chosen leg is about */
 function legRows(list){
   if(LEG==='hesco')
     /* everything HESCO still owes or has in the AWPT loop, plus anything with a cycle */
@@ -2968,11 +2969,12 @@ function hasCycle(r,leg){
   return h.some(x=>x.leg===leg && (x.submitted||'').trim()!=='');
 }
 function stats(){
-  const base=AB.filter(inBase);
+  const SET=DOCS();
+  const base=SET.filter(inBase);
   const avg=list=>list.length?list.reduce((t,r)=>t+creditOf(r),0)/list.length:0;
-  const byH=h=>AB.filter(r=>r.holder===h).length;
+  const byH=h=>SET.filter(r=>r.holder===h).length;
   return {
-    t:AB.length, scored:base.length,
+    t:SET.length, scored:base.length,
     pct:Math.round(avg(base)*10)/10,
     basePct:Math.round(avg(base.filter(r=>r.scope==='Base'))*10)/10,
     optPct:Math.round(avg(base.filter(r=>r.scope==='Optional'))*10)/10,
@@ -2983,17 +2985,17 @@ function stats(){
     issuedOpt:base.filter(r=>r.scope==='Optional'&&r.status!=='Not issued').length,
     issuedAll:base.filter(r=>r.status!=='Not issued').length,
     hesco:byH('HESCO'), awpt:byH('AWPT'), maaden:byH("Maaden"), closed:byH('Closed'),
-    open:AB.length-byH('Closed'),
-    approved:AB.filter(r=>APPROVED.includes(r.status)).length,
-    review:AB.filter(r=>r.status==='Under review').length,
-    rejected:AB.filter(r=>r.status==='Rejected').length,
-    notIssued:AB.filter(r=>r.status==='Not issued').length,
+    open:SET.length-byH('Closed'),
+    approved:SET.filter(r=>APPROVED.includes(r.status)).length,
+    review:SET.filter(r=>r.status==='Under review').length,
+    rejected:SET.filter(r=>r.status==='Rejected').length,
+    notIssued:SET.filter(r=>r.status==='Not issued').length,
     /* The three gates a document passes through. Each is counted from the
        submission history, not from the current status, so a document that has
        moved on still counts as having passed the gate behind it. */
-    subAwpt: AB.filter(r=>hasCycle(r,'HESCO')).length,
-    okAwpt:  AB.filter(r=>hasCycle(r,'Maaden')).length,
-    okMaaden:AB.filter(r=>((HIST[r.id]||[]).some(h=>h.leg==='Maaden'
+    subAwpt: SET.filter(r=>hasCycle(r,'HESCO')).length,
+    okAwpt:  SET.filter(r=>hasCycle(r,'Maaden')).length,
+    okMaaden:SET.filter(r=>((HIST[r.id]||[]).some(h=>h.leg==='Maaden'
                 && (h.status==='Code A'||h.status==='Code B')))
                 || r.status==='Deemed').length
   };
@@ -3004,7 +3006,7 @@ function kpiHTML(){
     <div class="p">${p}</div><div class="bar"><i style="width:${f}%;background:${col}"></i></div></div>`;
   /* four by default — the scope and issued splits are detail, not headline */
   if(LEG==='hesco'){
-    const n=AB.length, sub=s.subAwpt, ans=AB.filter(r=>legReplied(r,'HESCO')).length;
+    const n=s.t, sub=s.subAwpt, ans=DOCS().filter(r=>legReplied(r,'HESCO')).length;
     return tile('Submitted to AWPT',pc(sub)+'%',sub+' of '+n+' issued by HESCO','#2a78d6',pc(sub))+
       tile('AWPT has answered',pc(ans)+'%',ans+' of '+n+' reviewed','#7c5cd6',pc(ans))+
       tile('Sitting with AWPT',s.awpt,'awaiting AWPT’s reply now','#f0b429',pc(s.awpt))+
@@ -3012,7 +3014,7 @@ function kpiHTML(){
       tile('Never submitted',s.notIssued,'no cycle at all','#8c9aa8',pc(s.notIssued));
   }
   if(LEG==='maaden'){
-    const n=AB.length, sent=s.okAwpt, ok=s.okMaaden;
+    const n=s.t, sent=s.okAwpt, ok=s.okMaaden;
     return tile('Sent to Maaden',pc(sent)+'%',sent+' of '+n+' submitted to the Client','#2a78d6',pc(sent))+
       tile('Approved by Maaden',pc(ok)+'%',ok+' Code A, Code B or deemed','#0f9d58',pc(ok))+
       tile('Sitting with Maaden',s.maaden,'awaiting the Client’s reply now','#f0b429',pc(s.maaden))+
@@ -3171,8 +3173,9 @@ function wireAge(root){
 }
 /* discipline: documents and progress */
 function disciplineChart(){
-  const ds=[...new Set(AB.map(r=>r.discipline))].filter(Boolean)
-    .map(d=>{const rows=AB.filter(r=>r.discipline===d);
+  const SET=DOCS();
+  const ds=[...new Set(SET.map(r=>r.discipline))].filter(Boolean)
+    .map(d=>{const rows=SET.filter(r=>r.discipline===d);
       const base=rows.filter(inBase);
       return {d,n:rows.length,
         pct:base.length?Math.round(base.reduce((t,r)=>t+creditOf(r),0)/base.length):0,
@@ -3181,7 +3184,7 @@ function disciplineChart(){
   if(!ds.length)return '<div class="empty">No disciplines recorded.</div>';
   const max=ds[0].n;
   return `<div class="chart dbars" data-chart="disc">${ds.map(x=>{
-    const parts=STATUSES.map(k=>({k,v:AB.filter(r=>r.discipline===x.d&&r.status===k).length})).filter(p=>p.v);
+    const parts=STATUSES.map(k=>({k,v:SET.filter(r=>r.discipline===x.d&&r.status===k).length})).filter(p=>p.v);
     return `<div class="drow"><div class="dlab" title="${esc(x.d)}">${esc(x.d)}</div>
       <div class="dtrack"><div class="dbar" style="width:${x.n/max*100}%">${parts.map(p=>
         `<i data-d="${esc(x.d)}" data-k="${esc(p.k)}" data-v="${p.v}" style="flex:${p.v};background:${COLOR[p.k]}"></i>`).join('')}</div></div>
