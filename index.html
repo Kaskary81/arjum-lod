@@ -1162,7 +1162,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v44';
+const BUILD='LOD 2026-08-29 · v45';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1476,6 +1476,11 @@ function openRegister(){
   return w;
 }
 const DOCS=()=>legRows(AB);   /* the documents the chosen leg is about */
+/* 18 deliverables are reviewed by AWPT and never issued to the Client. They
+   belong in the LOD and in the HESCO leg, but counting them against Maaden
+   progress understates it — so the Maaden leg measures only Client scope. */
+const isClientScope=r=>(r.reviewClass||'')!=='AWPT-only';
+const CLIENT=()=>AB.filter(isClientScope);
 function legRows(list){
   if(LEG==='hesco')
     /* everything HESCO still owes or has in the AWPT loop, plus anything with a cycle */
@@ -3014,12 +3019,18 @@ function kpiHTML(){
       tile('Never submitted',s.notIssued,'no cycle at all','#8c9aa8',pc(s.notIssued));
   }
   if(LEG==='maaden'){
-    const n=s.t, sent=s.okAwpt, ok=s.okMaaden;
-    return tile('Sent to Maaden',pc(sent)+'%',sent+' of '+n+' submitted to the Client','#2a78d6',pc(sent))+
-      tile('Approved by Maaden',pc(ok)+'%',ok+' Code A, Code B or deemed','#0f9d58',pc(ok))+
-      tile('Sitting with Maaden',s.maaden,'awaiting the Client’s reply now','#f0b429',pc(s.maaden))+
-      tile('Never sent to Maaden',n-sent,'still inside AWPT/HESCO','#d64545',pc(n-sent))+
-      tile('Closed',s.closed,'approved, no action','#0f9d58',pc(s.closed));
+    const set=CLIENT(), n=set.length;
+    const p=v=>n?Math.round(v/n*100):0;
+    const sent=set.filter(r=>hasCycle(r,'Maaden')).length;
+    const ok=set.filter(r=>((HIST[r.id]||[]).some(h=>h.leg==='Maaden'
+             &&(h.status==='Code A'||h.status==='Code B')))||r.status==='Deemed').length;
+    const wait=set.filter(r=>r.holder==='Maaden').length;
+    return tile('Sent to Maaden',p(sent)+'%',sent+' of '+n+' in Client scope','#2a78d6',p(sent))+
+      tile('Approved by Maaden',p(ok)+'%',ok+' Code A, Code B or deemed','#0f9d58',p(ok))+
+      tile('Sitting with Maaden',wait,'awaiting the Client’s reply now','#f0b429',p(wait))+
+      tile('Never sent to Maaden',n-sent,'of the '+n+' the Client must see','#d64545',p(n-sent))+
+      tile('AWPT-only',AB.filter(r=>!isClientScope(r)).length,
+        'never issued to the Client','#8c9aa8',0);
   }
   const core =
     tile('Overall progress',s.pct+'%',
@@ -3027,10 +3038,14 @@ function kpiHTML(){
       'var(--accent)',s.pct)+
     tile('Submitted to AWPT', pc(s.subAwpt)+'%',
       s.subAwpt+' of '+s.t+' issued by HESCO','#2a78d6', pc(s.subAwpt))+
-    tile('Approved by AWPT', pc(s.okAwpt)+'%',
-      s.okAwpt+' of '+s.t+' cleared onward to Maaden','#7c5cd6', pc(s.okAwpt))+
-    tile("Approved by Maaden", pc(s.okMaaden)+'%',
-      s.okMaaden+' of '+s.t+' Code A, Code B or deemed','#0f9d58', pc(s.okMaaden))+
+    tile('Approved by AWPT',
+      (CLIENT().length?Math.round(s.okAwpt/CLIENT().length*100):0)+'%',
+      s.okAwpt+' of '+CLIENT().length+' cleared onward to Maaden','#7c5cd6',
+      CLIENT().length?s.okAwpt/CLIENT().length*100:0)+
+    tile("Approved by Maaden",
+      (CLIENT().length?Math.round(s.okMaaden/CLIENT().length*100):0)+'%',
+      s.okMaaden+' of '+CLIENT().length+' in Client scope','#0f9d58',
+      CLIENT().length?s.okMaaden/CLIENT().length*100:0)+
     tile('With HESCO',s.hesco,'to produce or resubmit','#d64545',pc(s.hesco))+
     tile('With AWPT',s.awpt,'to review and issue','#f0b429',pc(s.awpt))+
     tile("With Maaden",s.maaden,'awaiting the Client','#2a78d6',pc(s.maaden))+
