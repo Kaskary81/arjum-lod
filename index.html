@@ -956,6 +956,14 @@ table.g.wrapped td .cellin{white-space:pre-wrap}
 .gwrap::-webkit-scrollbar-thumb:hover{background:var(--accent)}
 .gwrap::-webkit-scrollbar-corner{background:var(--surface2)}
 .btn.on{background:linear-gradient(180deg,var(--accent),#7c3aed);border-color:transparent;color:#fff}
+
+/* The register window: the toolbar is fixed and the grid scrolls inside it,
+   so the horizontal scrollbar sits at the bottom of the window where it can
+   be seen — previously the grid was taller than the window and its bar fell
+   off the bottom of the screen. */
+.wbody.gridwin{overflow:hidden;display:flex;flex-direction:column}
+.wbody.gridwin > .wtools{flex:none}
+.wbody.gridwin > .gwrap{flex:1;min-height:0;overflow:auto}
 </style>
 </head>
 <body>
@@ -1087,6 +1095,8 @@ const COLBY=Object.fromEntries(COLS.map(c=>[c.k,c]));
 let AB=[], LIVE=false, USER=null, MOBILE=false; let REVS={};
 let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{}, rowh:24, wrap:false};
 let NOTIFS=[], ACTS=[];
+let DASH_FULL=false;
+try{ DASH_FULL = localStorage.getItem('lod-dashfull')==='1'; }catch(e){}
 
 /* A date turned into yyyy-mm-dd must use LOCAL parts. toISOString() converts to
    UTC first, so in Riyadh (UTC+3) local midnight lands on the previous day and
@@ -1096,7 +1106,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v34';
+const BUILD='LOD 2026-08-29 · v35';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1462,10 +1472,10 @@ function renderGrid(){
     <button class="btn" id="gadd"${canEdit()?'':' disabled'}>Add document</button>
     <button class="btn" id="gdel"${canEdit()?'':' disabled'}>Delete selected</button>
     <button class="btn" id="gplan"${canEdit()?'':' disabled'}>Add to plan</button>
-    <button class="btn" id="ghist2">History</button>
+    <button class="btn" id="ghist2">Submissions</button>
     <button class="btn" id="gtalk">Discussion</button>
     <button class="btn" id="gpdf">Export PDF</button>
-    <button class="btn" id="ghist">History</button>
+    <button class="btn" id="ghist">Changes</button>
     <button class="btn" id="gcols">Columns</button>
     <span class="hint" id="gcount"></span></div>`;
   const allOn=rows.length&&rows.every(r=>PICKED.has(r.id));
@@ -1478,6 +1488,7 @@ function renderGrid(){
         PICKED.has(r.id)?' checked':''}><span class="rn">${ri+1}</span><span class="rr"></span></th>${
       cs.map((c,ci)=>`<td data-r="${ri}" data-c="${ci}" class="${c.cls||''}">${cellText(r,c)}</td>`).join('')}
     </tr>`).join('')}</tbody>`;
+  w.body.classList.add('gridwin');
   w.body.innerHTML=tools+`<div class="gwrap" id="gwrap"><table class="g${
       PREFS.wrap?' wrapped':''}">${head}${body}</table></div>`;
   document.getElementById('gcount').innerHTML=rows.length+' of '+AB.length+
@@ -2874,7 +2885,15 @@ function kpiHTML(){
   const s=stats(), pc=n=>s.t?Math.round(n/s.t*100):0;
   const tile=(k,v,p,col,f)=>`<div class="kpi"><div class="k">${k}</div><div class="v">${v}</div>
     <div class="p">${p}</div><div class="bar"><i style="width:${f}%;background:${col}"></i></div></div>`;
-  return tile('Overall progress',s.pct+'%',s.scored+' documents scored','var(--accent)',s.pct)+
+  /* four by default — the scope and issued splits are detail, not headline */
+  const core =
+    tile('Overall progress',s.pct+'%',s.scored+' documents scored','var(--accent)',s.pct)+
+    tile('With HESCO',s.hesco,'to produce or resubmit','#d64545',pc(s.hesco))+
+    tile('With AWPT',s.awpt,'to review and issue','#f0b429',pc(s.awpt))+
+    tile("With Maaden",s.maaden,'awaiting the Client','#2a78d6',pc(s.maaden))+
+    tile('Closed',s.closed,'approved, no action','#0f9d58',pc(s.closed));
+  if(!DASH_FULL)return core;
+  return core+
     tile('Base scope',s.basePct+'%',s.baseN+' documents','#0f9d58',s.basePct)+
     tile('Optional scope',s.optPct+'%',s.optN+' documents','#f0b429',s.optPct)+
     tile('Issued to AWPT · base',
@@ -2884,11 +2903,7 @@ function kpiHTML(){
     tile('Issued to AWPT · optional',
       s.optN?Math.round(s.issuedOpt/s.optN*100)+'%':'—',
       s.issuedOpt+' of '+s.optN+' issued','#7c5cd6',
-      s.optN?s.issuedOpt/s.optN*100:0)+
-    tile('With HESCO',s.hesco,'to produce or resubmit','#d64545',pc(s.hesco))+
-    tile('With AWPT',s.awpt,'to review and issue','#f0b429',pc(s.awpt))+
-    tile("With Maaden",s.maaden,'awaiting the Client','#2a78d6',pc(s.maaden))+
-    tile('Closed',s.closed,'approved, no action','#0f9d58',pc(s.closed));
+      s.optN?s.issuedOpt/s.optN*100:0);
 }
 
 /* ---------- ball in court ---------- */
@@ -3084,17 +3099,10 @@ function openDashboard(){
 }
 function renderDash(){
   const w=[...WINS.values()].find(x=>x.kind==='dash'); if(!w)return;
-  w.body.innerHTML=`<div class="dash">
-    <div class="kpis">${kpiHTML()}</div>
-    <div class="panel"><h3>Review clock — Client and AWPT</h3>${clockHTML()}
-      <div class="planbar" style="margin-top:10px">
-        <button class="btn" id="descal">Export the overdue list</button></div></div>
-    <div class="panel"><h3>Progress over time</h3>${trendHTML()}
-      <div class="planbar" style="margin-top:10px">
-        <button class="btn" id="dsnap"${canEdit()?'':' disabled'}>Record today's snapshot</button></div></div>
-    <div class="panel"><h3>Review clock</h3>${clockHTML()}</div>
-    <div class="panel"><h3>Progress over time</h3>${trendHTML()}</div>
-    <div class="panel"><h3>Ball in court</h3>${ballChart()}</div>
+  /* Four numbers, three charts, and the work that needs chasing. Everything
+     else is a click away — the dashboard used to show thirteen panels at once
+     (two of them twice over), which is not something anyone can read. */
+  const more = DASH_FULL ? `
     <div class="panel"><h3>Where the credit sits</h3>${creditChart()}</div>
     <div class="panel"><h3>Issued from HESCO to AWPT</h3>${issuedChart()}</div>
     <div class="panel"><h3>Progress by review class</h3>${classChart()}</div>
@@ -3102,12 +3110,30 @@ function renderDash(){
       <div class="panel"><h3>Issued to the Client — cumulative</h3>${curveChart()}</div>
       <div class="panel"><h3>How long documents have been held</h3>${ageingChart()}</div>
     </div>
+    <div class="panel"><h3>Progress over time</h3>${trendHTML()}
+      <div class="planbar" style="margin-top:10px">
+        <button class="btn" id="dsnap"${canEdit()?'':' disabled'}>Record today's snapshot</button></div></div>
+    <div class="panel"><h3>Needs attention</h3>${attentionHTML()}</div>` : '';
+
+  w.body.innerHTML=`<div class="dash">
+    <div class="kpis">${kpiHTML()}</div>
+    <div class="panel"><h3>Ball in court</h3>${ballChart()}</div>
     <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div>
-    <div class="panel"><h3>Past their planned submission date</h3>${overdueHTML(20)}</div>
-    <div class="panel"><h3>Needs attention</h3>${attentionHTML()}</div></div>`;
+    <div class="panel"><h3>Past the review window</h3>${clockHTML()}
+      <div class="planbar" style="margin-top:10px">
+        <button class="btn" id="descal">Export the overdue list</button></div></div>
+    <div class="panel"><h3>Past their planned submission date</h3>${overdueHTML(12)}</div>
+    ${more}
+    <div class="planbar" style="justify-content:center;margin-top:4px">
+      <button class="btn" id="dmore">${DASH_FULL?'Show less':'Show more detail'}</button>
+    </div></div>`;
   wireCharts(w.body); wireClock(w.body);
   const es=w.body.querySelector('#descal'); if(es)es.onclick=exportEscalation;
   const sn=w.body.querySelector('#dsnap'); if(sn)sn.onclick=takeSnapshot;
+  const mb=w.body.querySelector('#dmore');
+  if(mb)mb.onclick=()=>{ DASH_FULL=!DASH_FULL;
+    try{ localStorage.setItem('lod-dashfull', DASH_FULL?'1':''); }catch(e){}
+    renderDash(); };
 }
 function refresh(){ if(GRID&&GRID.win&&WINS.has(GRID.win.id))renderGrid(); renderDash(); renderDock();
   refreshHistory();
