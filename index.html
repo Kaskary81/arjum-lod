@@ -964,6 +964,31 @@ table.g.wrapped td .cellin{white-space:pre-wrap}
 .wbody.gridwin{overflow:hidden;display:flex;flex-direction:column}
 .wbody.gridwin > .wtools{flex:none}
 .wbody.gridwin > .gwrap{flex:1;min-height:0;overflow:auto}
+
+/* recovery plan comparison */
+.rchead{display:flex;align-items:center;gap:16px;margin-bottom:12px}
+.rcpct{font-size:38px;font-weight:700;letter-spacing:-.02em;color:var(--accent);line-height:1}
+.rcsub b{display:block;font-size:14px}
+.rcsub span{font-size:12px;color:var(--muted)}
+.rcbar{display:flex;height:12px;border-radius:7px;overflow:hidden;background:var(--chip);margin-bottom:8px}
+.rcbar i{display:block}
+.rcbar i.ontime{background:#0f9d58} .rcbar i.late{background:#f0b429}
+.rcbar i.overdue{background:#d64545} .rcbar i.due{background:#3f2d67}
+.rclegend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ink2);margin-bottom:14px}
+.rclegend span{display:inline-flex;align-items:center;gap:6px}
+.rclegend i{width:11px;height:9px;border-radius:3px;display:inline-block}
+.rclegend i.ontime{background:#0f9d58} .rclegend i.late{background:#f0b429}
+.rclegend i.overdue{background:#d64545} .rclegend i.due{background:#3f2d67}
+table.rctbl{width:100%;border-collapse:collapse;font-size:12.5px}
+table.rctbl th{text-align:left;padding:6px 8px;border-bottom:1px solid var(--ring);
+  font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+table.rctbl td{padding:6px 8px;border-bottom:1px solid var(--grid);color:var(--ink2)}
+table.rctbl th.n,table.rctbl td.n{text-align:right;font-variant-numeric:tabular-nums}
+table.rctbl td.good{color:#0f9d58;font-weight:700}
+table.rctbl td.bad{color:#d64545;font-weight:700}
+table.rctbl tr.hot td{background:rgba(214,69,69,.08)}
+table.rctbl tr.tot td{border-top:2px solid var(--ring);border-bottom:none}
+table.rctbl tr[data-go]:hover td{background:var(--chip)}
 </style>
 </head>
 <body>
@@ -1106,7 +1131,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v35';
+const BUILD='LOD 2026-08-29 · v36';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -3097,6 +3122,97 @@ function openDashboard(){
   const w=createWindow('dash','Dashboard','design deliverables progress',null,null,980,660);
   renderDash(); return w;
 }
+
+/* ============================================================
+   Recovery plan — committed dates against what has actually
+   gone to AWPT. This is the dashboard now; everything else is
+   behind "Show more detail".
+   ============================================================ */
+let RECOV={loaded:false,items:[]};
+async function loadRecovery(){
+  try{
+    const plans=(PLANS||[]).filter(p=>/^Recovery plan/i.test(p.name||''));
+    if(!plans.length){ RECOV={loaded:true,items:[]}; return; }
+    let out=[];
+    for(const p of plans){
+      const its=await api('lod_plan_items?planId=eq.'+p.id+'&order=plannedDate.asc');
+      (its||[]).forEach(i=>out.push({...i, week:p.weekStart}));
+    }
+    RECOV={loaded:true,items:out};
+  }catch(e){ RECOV={loaded:true,items:[]}; }
+}
+function recovState(it){
+  const d=AB.find(x=>x.id===it.docId);
+  const sent=(d&&(d.awptSubmitted||'').trim())||'';
+  if(sent) return {k: sent<=it.plannedDate?'ontime':'late', sent, doc:d};
+  return {k: it.plannedDate<today?'overdue':'due', sent:'', doc:d};
+}
+function recoveryHTML(){
+  if(!RECOV.loaded){ loadRecovery().then(renderDash); return '<div class="empty">Reading the plan…</div>'; }
+  const items=RECOV.items;
+  if(!items.length)
+    return '<div class="empty">No recovery plan loaded. Create a submission plan named '+
+           '"Recovery plan" to see the comparison here.</div>';
+  const st=items.map(recovState);
+  const n=k=>st.filter(x=>x.k===k).length;
+  const done=n('ontime')+n('late'), pct=Math.round(done/items.length*100);
+
+  const bar=`<div class="rcbar">
+      <i class="ontime" style="flex:${n('ontime')||0.001}"></i>
+      <i class="late"   style="flex:${n('late')||0.001}"></i>
+      <i class="overdue"style="flex:${n('overdue')||0.001}"></i>
+      <i class="due"    style="flex:${n('due')||0.001}"></i></div>
+    <div class="rclegend">
+      <span><i class="ontime"></i>${n('ontime')} on time</span>
+      <span><i class="late"></i>${n('late')} submitted late</span>
+      <span><i class="overdue"></i>${n('overdue')} overdue, not submitted</span>
+      <span><i class="due"></i>${n('due')} still to come</span></div>`;
+
+  /* by committed date */
+  const byDate={};
+  items.forEach((it,i)=>{ const d=it.plannedDate;
+    (byDate[d]=byDate[d]||{d,total:0,done:0,overdue:0});
+    byDate[d].total++;
+    if(st[i].k==='ontime'||st[i].k==='late')byDate[d].done++;
+    if(st[i].k==='overdue')byDate[d].overdue++; });
+  const dates=Object.values(byDate).sort((a,b)=>a.d<b.d?-1:1);
+  const table=`<table class="rctbl"><thead><tr>
+      <th>Committed date</th><th class="n">Documents</th><th class="n">Submitted</th>
+      <th class="n">Outstanding</th><th class="n">Done</th></tr></thead><tbody>
+    ${dates.map(r=>`<tr${r.d<today&&r.done<r.total?' class="hot"':''}>
+      <td><b>${esc(niceDate(r.d))}</b></td>
+      <td class="n">${r.total}</td>
+      <td class="n good">${r.done||'—'}</td>
+      <td class="n ${r.total-r.done?'bad':''}">${r.total-r.done||'—'}</td>
+      <td class="n">${Math.round(r.done/r.total*100)}%</td></tr>`).join('')}
+    <tr class="tot"><td><b>Total</b></td><td class="n"><b>${items.length}</b></td>
+      <td class="n good"><b>${done}</b></td><td class="n bad"><b>${items.length-done}</b></td>
+      <td class="n"><b>${pct}%</b></td></tr></tbody></table>`;
+
+  /* what is late right now */
+  const lateList=items.map((it,i)=>({it,s:st[i]}))
+    .filter(x=>x.s.k==='overdue')
+    .sort((a,b)=>a.it.plannedDate<b.it.plannedDate?-1:1);
+  const late=lateList.length?`<h3 style="margin-top:16px">Committed but not submitted</h3>
+    <table class="rctbl"><thead><tr><th>Document</th><th>Committed</th>
+      <th class="n">Days late</th><th>Agreed action</th></tr></thead><tbody>
+    ${lateList.map(x=>`<tr data-go="${x.it.docId}">
+      <td>${esc((x.s.doc&&x.s.doc.title)||'—')}</td>
+      <td>${esc(niceDate(x.it.plannedDate))}</td>
+      <td class="n bad">${days(x.it.plannedDate,today)}</td>
+      <td>${esc(x.it.note||'')}</td></tr>`).join('')}</tbody></table>`:'';
+
+  return `<div class="rchead"><div class="rcpct">${pct}%</div>
+      <div class="rcsub"><b>${done} of ${items.length} submitted to AWPT</b>
+        <span>against the dates HESCO committed in the recovery plan</span></div></div>
+    ${bar}${table}${late}`;
+}
+function niceDate(d){
+  if(!d)return '';
+  const dt=new Date(d+'T00:00:00');
+  return dt.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+}
+
 function renderDash(){
   const w=[...WINS.values()].find(x=>x.kind==='dash'); if(!w)return;
   /* Four numbers, three charts, and the work that needs chasing. Everything
@@ -3116,13 +3232,16 @@ function renderDash(){
     <div class="panel"><h3>Needs attention</h3>${attentionHTML()}</div>` : '';
 
   w.body.innerHTML=`<div class="dash">
+    <div class="panel"><h3>Recovery plan — committed against submitted</h3>
+      ${recoveryHTML()}</div>
+    ${DASH_FULL?`
     <div class="kpis">${kpiHTML()}</div>
     <div class="panel"><h3>Ball in court</h3>${ballChart()}</div>
     <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div>
     <div class="panel"><h3>Past the review window</h3>${clockHTML()}
       <div class="planbar" style="margin-top:10px">
         <button class="btn" id="descal">Export the overdue list</button></div></div>
-    <div class="panel"><h3>Past their planned submission date</h3>${overdueHTML(12)}</div>
+    <div class="panel"><h3>Past their planned submission date</h3>${overdueHTML(12)}</div>`:''}
     ${more}
     <div class="planbar" style="justify-content:center;margin-top:4px">
       <button class="btn" id="dmore">${DASH_FULL?'Show less':'Show more detail'}</button>
@@ -3130,6 +3249,11 @@ function renderDash(){
   wireCharts(w.body); wireClock(w.body);
   const es=w.body.querySelector('#descal'); if(es)es.onclick=exportEscalation;
   const sn=w.body.querySelector('#dsnap'); if(sn)sn.onclick=takeSnapshot;
+  w.body.querySelectorAll('.rctbl tr[data-go]').forEach(tr=>{
+    tr.style.cursor='pointer';
+    tr.onclick=()=>{ const r=AB.find(x=>x.id===+tr.dataset.go);
+      if(r){ openRegister(); setTimeout(()=>{ const i=GRID.rows.findIndex(x=>x.id===r.id);
+        if(i>=0){ GRID.cur={r:i,c:0}; paintSel(); } },250); } };});
   const mb=w.body.querySelector('#dmore');
   if(mb)mb.onclick=()=>{ DASH_FULL=!DASH_FULL;
     try{ localStorage.setItem('lod-dashfull', DASH_FULL?'1':''); }catch(e){}
