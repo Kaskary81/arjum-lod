@@ -1162,7 +1162,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v41';
+const BUILD='LOD 2026-08-29 · v42';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -3004,25 +3004,25 @@ function kpiHTML(){
     <div class="p">${p}</div><div class="bar"><i style="width:${f}%;background:${col}"></i></div></div>`;
   /* four by default — the scope and issued splits are detail, not headline */
   if(LEG==='hesco'){
-    const n=AB.length, sub=s.subAwpt, ans=AB.filter(r=>legReplied(r,'HESCO')).length,
-          wait=AB.filter(r=>legSent(r,'HESCO')&&!legReplied(r,'HESCO')).length;
+    const n=AB.length, sub=s.subAwpt, ans=AB.filter(r=>legReplied(r,'HESCO')).length;
     return tile('Submitted to AWPT',pc(sub)+'%',sub+' of '+n+' issued by HESCO','#2a78d6',pc(sub))+
       tile('AWPT has answered',pc(ans)+'%',ans+' of '+n+' reviewed','#7c5cd6',pc(ans))+
-      tile('Awaiting AWPT',wait,'sent, no reply yet','#f0b429',pc(wait))+
+      tile('Sitting with AWPT',s.awpt,'awaiting AWPT’s reply now','#f0b429',pc(s.awpt))+
       tile('Still with HESCO',s.hesco,'to produce or resubmit','#d64545',pc(s.hesco))+
       tile('Never submitted',s.notIssued,'no cycle at all','#8c9aa8',pc(s.notIssued));
   }
   if(LEG==='maaden'){
-    const n=AB.length, sent=s.okAwpt, ok=s.okMaaden,
-          wait=AB.filter(r=>legSent(r,'Maaden')&&!legReplied(r,'Maaden')).length;
+    const n=AB.length, sent=s.okAwpt, ok=s.okMaaden;
     return tile('Sent to Maaden',pc(sent)+'%',sent+' of '+n+' submitted to the Client','#2a78d6',pc(sent))+
       tile('Approved by Maaden',pc(ok)+'%',ok+' Code A, Code B or deemed','#0f9d58',pc(ok))+
-      tile('Under Client review',wait,'sent, no reply yet','#f0b429',pc(wait))+
+      tile('Sitting with Maaden',s.maaden,'awaiting the Client’s reply now','#f0b429',pc(s.maaden))+
       tile('Never sent to Maaden',n-sent,'still inside AWPT/HESCO','#d64545',pc(n-sent))+
       tile('Closed',s.closed,'approved, no action','#0f9d58',pc(s.closed));
   }
   const core =
-    tile('Overall progress',s.pct+'%',s.scored+' documents scored','var(--accent)',s.pct)+
+    tile('Overall progress',s.pct+'%',
+      s.scored+' of '+s.t+' scored · '+(s.t-s.scored)+' have no planned date',
+      'var(--accent)',s.pct)+
     tile('Submitted to AWPT', pc(s.subAwpt)+'%',
       s.subAwpt+' of '+s.t+' issued by HESCO','#2a78d6', pc(s.subAwpt))+
     tile('Approved by AWPT', pc(s.okAwpt)+'%',
