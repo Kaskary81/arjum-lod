@@ -1009,6 +1009,8 @@ table.rctbl tr[data-go]:hover td{background:var(--chip)}
   <div class="title">LOD Tracker<small id="projsub">Taif Ar Rjum · Package B</small></div>
   <button class="tbbtn" id="b-reg">▦ Register</button>
   <button class="tbbtn" id="b-dash">◔ Dashboard</button>
+  <button class="tbbtn" id="b-hesco" title="Register and dashboard for the HESCO → AWPT leg">⇄ HESCO → AWPT</button>
+  <button class="tbbtn" id="b-maaden" title="Register and dashboard for the AWPT → Maaden leg">⇄ AWPT → Maaden</button>
   <button class="tbbtn" id="b-plan">Plan</button>
   <button class="tbbtn" id="b-undo" title="Undo (Ctrl+Z)">↶</button>
   <button class="tbbtn" id="b-redo" title="Redo (Ctrl+Y)">↷</button>
@@ -1098,6 +1100,13 @@ const CODES=STATUSES;
 const COLOR={'Code A':'#0f9d58','Deemed':'#4bb07a','Code B':'#6fc38a','Under review':'#f0b429',
   'Rejected':'#d64545','RNC':'#6b7f92','RWC':'#7d8fa0',
   'Under AWPT review':'#a7b2bd','Not issued':'#cbd2d8'};
+/* Each leg has its own answer vocabulary. The document's overall status is
+   written in AWPT's terms, so on a leg register the Status column shows THAT
+   leg's own outcome instead — the Maaden register reads Maaden's codes. */
+const LEGSTATUSES={hesco:['Replied','Awaiting reply','Not submitted'],
+  maaden:['Code A','Code B','Under Client review','Replied','Not submitted']};
+const LCOLOR={'Code A':'#0f9d58','Code B':'#6fc38a','Under Client review':'#f0b429',
+  'Replied':'#6b7f92','Awaiting reply':'#f0b429','Not submitted':'#cbd2d8'};
 const HCOLOR={'HESCO':'#d64545','AWPT':'#f0b429',"Maaden":'#2a78d6','Closed':'#0f9d58'};
 const DISCS=['ARCH','Civil','Electric','General','ICT','ICT/Mech','Mech/ELC',
   'Mechanical','Process','Project Man','Structural'];
@@ -1133,19 +1142,28 @@ const COLS=[
   {k:'hRev',  t:'HESCO rev',   w:88,  ro:1, cls:'ctr mono', leg:'hesco', calc:r=>legRev(r,'HESCO')},
   {k:'hSent', t:'Sent to AWPT',w:112, ro:1, cls:'mono',     leg:'hesco', calc:r=>legSent(r,'HESCO')},
   {k:'hBack', t:'AWPT replied',w:112, ro:1, cls:'mono',     leg:'hesco', calc:r=>legReplied(r,'HESCO')},
-  {k:'hOut',  t:'AWPT outcome',w:140, ro:1, cls:'ctr',      leg:'hesco', calc:r=>legState(r,'HESCO')},
-  {k:'hN',    t:'Cycles',      w:70,  ro:1, cls:'num',      leg:'hesco', calc:r=>legCycles(r,'HESCO').length||''},
+  {k:'hOut',  t:'AWPT status', w:150, ro:1, cls:'ctr', pill:1, leg:'hesco', calc:r=>legState(r,'HESCO')},
+  {k:'hN',    t:'Cycles',      w:70,  ro:1, cls:'num',      leg:'hesco',
+     calc:r=>{const t=legRow(r,'hesco');return (t?t.cycles:legCycles(r,'HESCO').length)||'';}},
   /* AWPT → Maaden */
   {k:'mRev',  t:'Maaden rev',  w:92,  ro:1, cls:'ctr mono', leg:'maaden', calc:r=>legRev(r,'Maaden')},
   {k:'mSent', t:'Sent to Maaden',w:118,ro:1, cls:'mono',    leg:'maaden', calc:r=>legSent(r,'Maaden')},
   {k:'mBack', t:'Maaden replied',w:118,ro:1, cls:'mono',    leg:'maaden', calc:r=>legReplied(r,'Maaden')},
-  {k:'mOut',  t:'Maaden code',  w:140, ro:1, cls:'ctr',     leg:'maaden', calc:r=>legState(r,'Maaden')},
-  {k:'mN',    t:'Cycles',       w:70,  ro:1, cls:'num',     leg:'maaden', calc:r=>legCycles(r,'Maaden').length||''}
+  {k:'mOut',  t:'Maaden status',w:150, ro:1, cls:'ctr', pill:1,leg:'maaden', calc:r=>legState(r,'Maaden')},
+  {k:'mN',    t:'Cycles',       w:70,  ro:1, cls:'num',     leg:'maaden',
+     calc:r=>{const t=legRow(r,'maaden');return (t?t.cycles:legCycles(r,'Maaden').length)||'';}}
 ];
 const COLBY=Object.fromEntries(COLS.map(c=>[c.k,c]));
 
 /* ---------------- state ---------------- */
 let AB=[], LIVE=false, USER=null, MOBILE=false; let REVS={};
+/* The two leg REGISTERS are real tables now (public.lod_awpt_submittals 148 rows,
+   public.lod_maaden_submittals 130 rows), kept in step with lod_history by database
+   triggers. Membership of a leg is decided by those tables, never guessed from the
+   cycles — that is what makes each register carry its exact number of submittals. */
+let LEGA={}, LEGM={}, LEGOK=false;
+const legTbl=leg=>leg==='maaden'?LEGM:LEGA;
+const legRow=(r,leg)=>legTbl(leg==='Maaden'||leg==='maaden'?'maaden':'hesco')[r.id]||null;
 const SHOWN=['docNumber','title','reviewClass','scope','rev','status',
              'issuedDate','respondedDate'];
 const DEFAULT_HIDDEN=COLS.filter(c=>!SHOWN.includes(c.k)&&!c.leg).map(c=>c.k);
@@ -1162,7 +1180,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v45';
+const BUILD='LOD 2026-08-29 · v47';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1311,7 +1329,12 @@ function visCols(){
   /* on a leg, drop the columns that belong to the other one and the
      derived overall dates, then append this leg's own */
   const drop=['issuedDate','respondedDate','credit','reviewDays','rev'];
-  return base.filter(c=>!c.leg&&!drop.includes(c.k)).concat(legCols);
+  const outK=LEG==='hesco'?'hOut':'mOut';
+  /* the overall status is the AWPT loop's verdict — on a leg it is replaced,
+     in the same position, by that leg's own answer */
+  const keep=base.filter(c=>!c.leg&&!drop.includes(c.k))
+                 .map(c=>c.k==='status'?COLBY[outK]:c);
+  return keep.concat(legCols.filter(c=>c.k!==outK));
 }
 function colW(c){ return PREFS.w[c.k]||c.w; }
 let _prefTimer=null;
@@ -1397,6 +1420,7 @@ function applyRect(w){
 }
 function focusWin(id){
   focused=id;
+  const fw=WINS.get(id); if(fw&&fw.grid)GRID=fw.grid;
   [...WINS.values()].forEach(w=>{w.el.classList.toggle('focus',w.id===id);});
   const w=WINS.get(id); if(w){w.el.style.zIndex=++winSeq+100; if(w.min){w.min=false;applyRect(w);renderDock();}}
 }
@@ -1417,7 +1441,7 @@ function renderDock(){
   d.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>focusWin(b.dataset.d));
 }
 function dockStatus(){
-  const s=stats();
+  const s=withLeg('all',stats);
   return (LIVE?'● live':'● snapshot, read-only')+' · '+s.t+' documents · '+
     s.sub+' submitted · '+s.ur+' under review'+(USER?' · '+esc(USER.name):'')+' · build '+BUILD;
 }
@@ -1466,27 +1490,47 @@ function dragEnd(){
 window.addEventListener('resize',()=>{ [...WINS.values()].forEach(applyRect); checkMode(); });
 
 /* ================= grid engine ================= */
-let GRID=null; const PICKED=new Set();   /* {win, rows, sel:{r1,c1,r2,c2}, cur:{r,c}, sort:{k,dir}, filters} */
-
-function openRegister(){
-  const w=createWindow('reg','Register','as-built documents');
-  GRID={win:w, sort:{k:'sn',dir:1}, q:'', fd:'', fs:'', fx:'', fh:'', fage:null, fageL:'',
-        sel:null, cur:{r:0,c:0}, editing:null};
-  renderGrid();
+let GRID=null; const PICKED=new Set();   /* {win, leg, rows, sel, cur, sort, filters} */
+/* Each register window owns its own state. GRID points at the one being drawn or
+   used; focusWin re-points it, so a click in either window works on that window. */
+const gridWins=()=>[...WINS.values()].filter(w=>w.grid);
+const GQ=sel=>(GRID&&GRID.win&&GRID.win.body)?GRID.win.body.querySelector(sel):null;
+function renderAllGrids(){
+  const keep=GRID;
+  gridWins().forEach(w=>renderGrid(w.grid));
+  if(keep&&keep.win&&WINS.has(keep.win.id))GRID=keep;
+}
+const REGMETA={
+  all   :['reg',        'Register',                 'all 148 documents'],
+  hesco :['reg-hesco',  'Register · HESCO → AWPT',  '148 submittals to AWPT'],
+  maaden:['reg-maaden', 'Register · AWPT → Maaden', '130 submittals in Client scope']};
+function openRegister(leg){
+  const m=REGMETA[leg||'all']||REGMETA.all;
+  const w=createWindow(m[0],m[1],m[2]);
+  if(!w.grid)
+    w.grid={win:w, leg:(leg||'all'), sort:{k:'sn',dir:1}, q:'', fd:'', fs:'', fx:'', fh:'',
+            fage:null, fageL:'', sel:null, cur:{r:0,c:0}, editing:null};
+  GRID=w.grid;
+  renderGrid(w.grid);
   return w;
 }
+/* the "Everything" register and the "Everything" dashboard share one leg choice */
+let LEGALL='all';
 const DOCS=()=>legRows(AB);   /* the documents the chosen leg is about */
 /* 18 deliverables are reviewed by AWPT and never issued to the Client. They
    belong in the LOD and in the HESCO leg, but counting them against Maaden
    progress understates it — so the Maaden leg measures only Client scope. */
 const isClientScope=r=>(r.reviewClass||'')!=='AWPT-only';
-const CLIENT=()=>AB.filter(isClientScope);
+const CLIENT=()=>LEGOK?AB.filter(r=>LEGM[r.id]):AB.filter(isClientScope);
+function withLeg(leg,fn){ const k=LEG; LEG=leg; try{ return fn(); } finally{ LEG=k; } }
 function legRows(list){
   if(LEG==='hesco')
-    /* everything HESCO still owes or has in the AWPT loop, plus anything with a cycle */
-    return list.filter(r=>legCycles(r,'HESCO').length || r.status==='Not issued');
+    return LEGOK ? list.filter(r=>LEGA[r.id])
+      /* offline snapshot: fall back to what the cycles say */
+      : list.filter(r=>legCycles(r,'HESCO').length || r.status==='Not issued');
   if(LEG==='maaden')
-    return list.filter(r=>legCycles(r,'Maaden').length || r.holder==='Maaden');
+    return LEGOK ? list.filter(r=>LEGM[r.id])
+      : list.filter(r=>legCycles(r,'Maaden').length || r.holder==='Maaden');
   return list;
 }
 function gridRows(){
@@ -1494,7 +1538,9 @@ function gridRows(){
   let rows=legRows(AB).filter(r=>{
     if(q&&!((r.ref||'')+' '+(r.title||'')).toLowerCase().includes(q))return false;
     if(GRID.fd&&r.discipline!==GRID.fd)return false;
-    if(GRID.fs&&r.status!==GRID.fs)return false;
+    if(GRID.fs){ const st=LEG==='all'?r.status
+        :legState(r,LEG==='hesco'?'HESCO':'Maaden');
+      if(st!==GRID.fs)return false; }
     if(GRID.fh&&r.holder!==GRID.fh)return false;
     if(GRID.fx==='open'&&!isOpen(r))return false;
     if(GRID.fx==='ur'&&r.status!=='Under review')return false;
@@ -1519,7 +1565,8 @@ function gridRows(){
 }
 function statusPill(v){
   const k=v||'Not issued';
-  return `<span class="pill" style="background:${COLOR[k]}22;color:${COLOR[k]}">${esc(k)}</span>`;
+  const col=COLOR[k]||LCOLOR[k]||'#8c9aa8';
+  return `<span class="pill" style="background:${col}22;color:${col}">${esc(k)}</span>`;
 }
 /* ============================================================
    The two legs. HESCO → AWPT is the internal loop; AWPT → Maaden
@@ -1530,16 +1577,21 @@ let LEG='all';
 const legCycles=(r,leg)=>(HIST[r.id]||[]).filter(h=>h.leg===leg)
   .sort((a,b)=>(a.submitted||'')<(b.submitted||'')?-1:1);
 const lastCycle=(r,leg)=>{const c=legCycles(r,leg);return c.length?c[c.length-1]:null;};
-const legSent   =(r,leg)=>{const c=lastCycle(r,leg);return c?(c.submitted||''):'';};
-const legReplied=(r,leg)=>{const c=lastCycle(r,leg);return c?(c.responded||''):'';};
-const legRev    =(r,leg)=>{const c=lastCycle(r,leg);return c?(c.rev||''):'';};
+const legSent   =(r,leg)=>{const t=legRow(r,leg); if(t)return t.sent||'';
+  const c=lastCycle(r,leg);return c?(c.submitted||''):'';};
+const legReplied=(r,leg)=>{const t=legRow(r,leg); if(t)return t.replied||'';
+  const c=lastCycle(r,leg);return c?(c.responded||''):'';};
+const legRev    =(r,leg)=>{const t=legRow(r,leg); if(t)return t.rev||'';
+  const c=lastCycle(r,leg);return c?(c.rev||''):'';};
 const legOutcome=(r,leg)=>{const c=lastCycle(r,leg);
   if(!c)return '';
   if(c.status)return c.status;
   return c.submitted&&!c.responded?'Awaiting reply':'';};
 function legState(r,leg){
+  const t=legRow(r,leg);
+  if(t)return t.outcome||'Not submitted';
   const c=lastCycle(r,leg);
-  if(!c)return 'Not started';
+  if(!c)return 'Not submitted';
   if(!c.responded)return 'Awaiting reply';
   return c.status||'Replied';
 }
@@ -1550,16 +1602,27 @@ function cellText(r,c){
     return esc(v)+'<span class="cbadge" title="'+CCOUNT[r.id]+' comment(s)">'+CCOUNT[r.id]+'</span>';
   return esc(v);
 }
-function renderGrid(){
-  const w=GRID.win; if(!w)return;
+function renderGrid(g){
+  const G=g||GRID; if(!G)return;
+  const w=G.win; if(!w||!WINS.has(w.id))return;
+  GRID=G;
+  const keepLeg=LEG;
+  /* the "Everything" window follows the shared leg tabs; a leg window is fixed */
+  LEG=G.leg=(w.kind==='reg'?LEGALL:G.leg);
   const rows=gridRows(); GRID.rows=rows;
   const cs=visCols();
-  const legbar=`<div class="legbar">
+  const legbar=(w.kind==='reg')?`<div class="legbar">
     ${[['all','Everything','all 148 documents'],
        ['hesco','HESCO → AWPT','the internal review loop'],
        ['maaden','AWPT → Maaden','what has gone to the Client']]
       .map(([k,t,sub])=>`<button class="legtab${LEG===k?' on':''}" data-leg="${k}">
-        <b>${t}</b><span>${sub}</span></button>`).join('')}</div>`;
+        <b>${t}</b><span>${sub}</span></button>`).join('')}</div>`
+    :`<div class="legbar"><button class="legtab on" data-legfixed="1"><b>${
+        LEG==='hesco'?'HESCO → AWPT':'AWPT → Maaden'}</b><span>${
+        LEG==='hesco'?'every LOD document — 148 submittals'
+                     :'Client scope only — 130 submittals'}</span></button>
+      <button class="legtab" data-opendash="${LEG}"><b>◔ This leg's dashboard</b>
+        <span>open it beside the register</span></button></div>`;
   const tools=legbar+`<div class="wtools">
     <input class="f" id="gq" placeholder="Search document, discipline or action" style="min-width:210px;flex:1" value="${esc(GRID.q)}">
     <button class="btn${PREFS.wrap?' on':''}" id="gwrapbtn" title="Show the full text of every cell">
@@ -1567,7 +1630,8 @@ function renderGrid(){
     <select class="f" id="gfd"><option value="">All disciplines</option>${
       DISCS.map(d=>`<option${GRID.fd===d?' selected':''}>${esc(d)}</option>`).join('')}</select>
     <select class="f" id="gfs"><option value="">All statuses</option>${
-      STATUSES.map(k=>`<option${GRID.fs===k?' selected':''}>${esc(k)}</option>`).join('')}</select>
+      (LEG==='all'?STATUSES:LEGSTATUSES[LEG]).map(k=>
+        `<option${GRID.fs===k?' selected':''}>${esc(k)}</option>`).join('')}</select>
     <select class="f" id="gfh"><option value="">Anyone's court</option>${
       HOLDERS.map(k=>`<option${GRID.fh===k?' selected':''}>${esc(k)}</option>`).join('')}</select>
     <select class="f" id="gfx">
@@ -1600,54 +1664,59 @@ function renderGrid(){
   w.body.classList.add('gridwin');
   w.body.innerHTML=tools+`<div class="gwrap" id="gwrap"><table class="g${
       PREFS.wrap?' wrapped':''}">${head}${body}</table></div>`;
-  document.getElementById('gcount').innerHTML=rows.length+' of '+AB.length+
+  const legTotal=(LEG==='all')?AB.length:legRows(AB).length;
+  w.body.querySelector('[id="gcount"]').innerHTML=rows.length+' of '+legTotal+
     (PICKED.size?` · <b>${PICKED.size} ticked</b> <button class="lnk" id="gclr">clear</button>`:'');
-  wireGrid();
+  wireGrid(G);
   paintSel();
+  LEG=keepLeg;
 }
-function wireGrid(){
-  const $=id=>document.getElementById(id);
-  $('gq').oninput=e=>{GRID.q=e.target.value;const s=e.target.selectionStart;renderGrid();
-    const n=document.getElementById('gq');n.focus();n.setSelectionRange(s,s);};
-  $('gfd').onchange=e=>{GRID.fd=e.target.value;GRID.fage=null;GRID.fageL='';renderGrid();};
-  $('gfs').onchange=e=>{GRID.fs=e.target.value;GRID.fage=null;GRID.fageL='';renderGrid();};
-  $('gfh').onchange=e=>{GRID.fh=e.target.value;GRID.fage=null;GRID.fageL='';renderGrid();};
-  $('gfx').onchange=e=>{GRID.fx=e.target.value;GRID.fage=null;GRID.fageL='';renderGrid();};
-  document.querySelectorAll('[data-leg]').forEach(b=>b.onclick=()=>{
-    LEG=b.dataset.leg; GRID.cur={r:0,c:0}; renderGrid(); renderDash(); });
+function wireGrid(g){
+  const G=g||GRID; const W=G.win;
+  const $=id=>W.body.querySelector('[id="'+id+'"]');
+  const draw=()=>{GRID=G;renderGrid(G);};
+  $('gq').oninput=e=>{G.q=e.target.value;const s=e.target.selectionStart;draw();
+    const n=$('gq');n.focus();n.setSelectionRange(s,s);};
+  $('gfd').onchange=e=>{G.fd=e.target.value;G.fage=null;G.fageL='';draw();};
+  $('gfs').onchange=e=>{G.fs=e.target.value;G.fage=null;G.fageL='';draw();};
+  $('gfh').onchange=e=>{G.fh=e.target.value;G.fage=null;G.fageL='';draw();};
+  $('gfx').onchange=e=>{G.fx=e.target.value;G.fage=null;G.fageL='';draw();};
+  W.body.querySelectorAll('[data-leg]').forEach(b=>b.onclick=()=>{
+    LEGALL=b.dataset.leg; G.cur={r:0,c:0}; draw(); renderDash(); });
+  W.body.querySelectorAll('[data-opendash]').forEach(b=>b.onclick=()=>
+    openDashboard(b.dataset.opendash));
   const wb=$('gwrapbtn');
-  if(wb)wb.onclick=()=>{ PREFS.wrap=!PREFS.wrap; savePrefs(); renderGrid(); };
-  $('gadd').onclick=addRow;
-  $('gdel').onclick=deleteSelected;
-  $('gcols').onclick=openCols;
-  $('gpdf').onclick=exportPDF;
+  if(wb)wb.onclick=()=>{ PREFS.wrap=!PREFS.wrap; savePrefs(); renderAllGrids(); };
+  const act=()=>{GRID=G;LEG=G.leg;};
+  $('gadd').onclick=()=>{act();addRow();};
+  $('gdel').onclick=()=>{act();deleteSelected();};
+  $('gcols').onclick=()=>{act();openCols();};
+  $('gpdf').onclick=()=>{act();exportPDF();};
   const allBox=$('gall');
-  if(allBox)allBox.onchange=()=>{ GRID.rows.forEach(r=>allBox.checked?PICKED.add(r.id):PICKED.delete(r.id));
-    renderGrid();};
-  document.querySelectorAll('#gwrap .rowchk').forEach(cb=>cb.onclick=e=>{
+  if(allBox)allBox.onchange=()=>{ G.rows.forEach(r=>allBox.checked?PICKED.add(r.id):PICKED.delete(r.id));
+    draw();};
+  W.body.querySelectorAll('[id="gwrap"] .rowchk').forEach(cb=>cb.onclick=e=>{
     e.stopPropagation();
     const id=+cb.dataset.k; cb.checked?PICKED.add(id):PICKED.delete(id);
-    document.getElementById('gcount').innerHTML=GRID.rows.length+' of '+AB.length+
-      (PICKED.size?` · <b>${PICKED.size} ticked</b> <button class="lnk" id="gclr">clear</button>`:'');
-    const c=$('gclr'); if(c)c.onclick=()=>{PICKED.clear();renderGrid();};});
-  if($('gclr'))$('gclr').onclick=()=>{PICKED.clear();renderGrid();};
-  $('gplan').onclick=()=>addPickedToPlan();
-  $('ghist2').onclick=()=>{const r=GRID.rows[GRID.cur.r];
+    draw();});
+  if($('gclr'))$('gclr').onclick=()=>{PICKED.clear();draw();};
+  $('gplan').onclick=()=>{act();addPickedToPlan();};
+  $('ghist2').onclick=()=>{act();const r=G.rows[G.cur.r];
     if(!r)return toast('Pick a row first');
     const w=[...WINS.values()].find(x=>x.kind==='hist')||
       createWindow('hist','Submission history','',null,null,660,520);
     w.rowId=r.id;                    // so it can redraw itself after a change
     paintCycles(w,r); focusWin(w.id);};
-  $('gtalk').onclick=()=>{const r=GRID.rows[GRID.cur.r];
+  $('gtalk').onclick=()=>{act();const r=G.rows[G.cur.r];
     if(r)openDiscussion(r); else toast('Pick a row first');};
-  $('ghist').onclick=()=>{const r=GRID.rows[GRID.cur.r];if(r)openHistory(r);else toast('Pick a row first');};
+  $('ghist').onclick=()=>{act();const r=G.rows[G.cur.r];if(r)openHistory(r);else toast('Pick a row first');};
 
   const wrap=$('gwrap'), tbl=wrap.querySelector('table');
   /* sort + column drag + resize */
   tbl.querySelectorAll('thead th[data-k]').forEach(th=>{
     th.onclick=e=>{ if(e.target.classList.contains('cr'))return;
       const k=th.dataset.k;
-      GRID.sort=(GRID.sort.k===k)?{k,dir:-GRID.sort.dir}:{k,dir:1}; renderGrid();};
+      G.sort=(G.sort.k===k)?{k,dir:-G.sort.dir}:{k,dir:1}; draw();};
     th.ondragstart=e=>{e.dataTransfer.setData('text/plain',th.dataset.k);th.classList.add('drag');};
     th.ondragend=()=>th.classList.remove('drag');
     th.ondragover=e=>e.preventDefault();
@@ -1655,14 +1724,14 @@ function wireGrid(){
       const from=e.dataTransfer.getData('text/plain'), to=th.dataset.k;
       if(!from||from===to)return;
       const o=PREFS.order.filter(k=>k!==from), i=o.indexOf(to);
-      o.splice(i<0?o.length:i,0,from); PREFS.order=o; savePrefs(); renderGrid();};
+      o.splice(i<0?o.length:i,0,from); PREFS.order=o; savePrefs(); renderAllGrids();};
     const cr=th.querySelector('.cr');
     cr.addEventListener('pointerdown',e=>{
       e.stopPropagation();e.preventDefault();
       const k=cr.dataset.rz, x0=e.clientX, w0=colW(COLBY[k]);
       const mv=ev=>{PREFS.w[k]=Math.max(46,w0+(ev.clientX-x0));
         th.style.width=th.style.minWidth=PREFS.w[k]+'px';};
-      const up=()=>{document.removeEventListener('pointermove',mv);savePrefs();renderGrid();};
+      const up=()=>{document.removeEventListener('pointermove',mv);savePrefs();renderAllGrids();};
       document.addEventListener('pointermove',mv);
       document.addEventListener('pointerup',up,{once:true});});
   });
@@ -1679,31 +1748,33 @@ function wireGrid(){
   });
   /* row header selects the whole row */
   tbl.querySelectorAll('tbody th[data-rh]').forEach(th=>{
-    th.onclick=()=>{const r=+th.dataset.rh;
-      GRID.sel={r1:r,c1:0,r2:r,c2:visCols().length-1};GRID.cur={r,c:0};paintSel();};
-    th.ondblclick=()=>{const r=GRID.rows[+th.dataset.rh];if(r)openHistory(r);};});
+    th.onclick=()=>{GRID=G;LEG=G.leg;const r=+th.dataset.rh;
+      G.sel={r1:r,c1:0,r2:r,c2:visCols().length-1};G.cur={r,c:0};paintSel();};
+    th.ondblclick=()=>{GRID=G;const r=G.rows[+th.dataset.rh];if(r)openHistory(r);};});
 
   /* cell selection */
   let dragging=false;
   tbl.addEventListener('pointerdown',e=>{
     const td=e.target.closest('td[data-c]'); if(!td)return;
+    GRID=G; LEG=G.leg;
     const r=+td.dataset.r,c=+td.dataset.c;
-    if(e.shiftKey&&GRID.sel){GRID.sel={...GRID.sel,r2:r,c2:c};}
-    else {GRID.sel={r1:r,c1:c,r2:r,c2:c};GRID.cur={r,c};}
+    if(e.shiftKey&&G.sel){G.sel={...G.sel,r2:r,c2:c};}
+    else {G.sel={r1:r,c1:c,r2:r,c2:c};G.cur={r,c};}
     dragging=true;paintSel();
     wrap.focus();
   });
   tbl.addEventListener('pointerover',e=>{
     if(!dragging)return; const td=e.target.closest('td[data-c]'); if(!td)return;
-    GRID.sel={...GRID.sel,r2:+td.dataset.r,c2:+td.dataset.c};paintSel();});
+    GRID=G; G.sel={...G.sel,r2:+td.dataset.r,c2:+td.dataset.c};paintSel();});
   document.addEventListener('pointerup',()=>{dragging=false;},{once:false});
   tbl.addEventListener('dblclick',e=>{
-    const td=e.target.closest('td[data-c]'); if(td)beginEdit(+td.dataset.r,+td.dataset.c);});
+    const td=e.target.closest('td[data-c]'); if(!td)return;
+    GRID=G; LEG=G.leg; beginEdit(+td.dataset.r,+td.dataset.c);});
   wrap.tabIndex=0;
-  wrap.addEventListener('keydown',gridKey);
+  wrap.addEventListener('keydown',e=>{GRID=G;LEG=G.leg;gridKey(e);});
 }
 function paintSel(){
-  const tbl=document.querySelector('#gwrap table'); if(!tbl||!GRID.sel)return;
+  const tbl=GQ('[id="gwrap"] table'); if(!tbl||!GRID||!GRID.sel)return;
   const {r1,c1,r2,c2}=GRID.sel;
   const [ra,rb]=[Math.min(r1,r2),Math.max(r1,r2)],[ca,cb]=[Math.min(c1,c2),Math.max(c1,c2)];
   tbl.querySelectorAll('td[data-c]').forEach(td=>{
@@ -1724,7 +1795,7 @@ function beginEdit(r,c){
   if(!col||!row)return;
   if(!canEdit())return toast(LIVE?'Your account cannot edit':'Read-only snapshot');
   if(col.ro)return toast(col.t+' is worked out automatically');
-  const td=document.querySelector(`td[data-r="${r}"][data-c="${c}"]`); if(!td)return;
+  const td=GQ(`td[data-r="${r}"][data-c="${c}"]`); if(!td)return;
   GRID.editing={r,c};
   const cur=row[col.k]??'';
   let el;
@@ -1738,7 +1809,7 @@ function beginEdit(r,c){
     el.remove();
     if(commit)await setCell(row,col.k,v);
     else renderGrid();
-    const wrap=document.getElementById('gwrap'); if(wrap)wrap.focus();
+    const wrap=GQ('[id="gwrap"]'); if(wrap)wrap.focus();
   };
   el.addEventListener('blur',()=>done(true));
   el.addEventListener('keydown',ev=>{
@@ -1757,7 +1828,7 @@ async function gridKey(e){
     GRID.cur={r,c};
     GRID.sel=ext&&GRID.sel?{...GRID.sel,r2:r,c2:c}:{r1:r,c1:c,r2:r,c2:c};
     paintSel();
-    const td=document.querySelector(`td[data-r="${r}"][data-c="${c}"]`);
+    const td=GQ(`td[data-r="${r}"][data-c="${c}"]`);
     if(td)td.scrollIntoView({block:'nearest',inline:'nearest'});
   };
   const k=e.key;
@@ -1774,7 +1845,7 @@ async function gridKey(e){
   else if((e.ctrlKey||e.metaKey)&&(k.toLowerCase()==='y'||(e.shiftKey&&k.toLowerCase()==='z'))){e.preventDefault();redo();}
   else if(k.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){
     beginEdit(GRID.cur.r,GRID.cur.c);
-    const el=document.querySelector('.cellin');
+    const el=GQ('.cellin');
     if(el&&el.tagName==='INPUT'){el.value=k;}
   }
 }
@@ -1850,7 +1921,7 @@ async function deleteSelected(){
 }
 document.addEventListener('paste',e=>{
   if(!GRID||!GRID.win||GRID.editing)return;
-  if(!document.getElementById('gwrap'))return;
+  if(!GQ('[id="gwrap"]'))return;
   const t=(e.clipboardData||window.clipboardData).getData('text');
   if(t){e.preventDefault();pasteIntoSel(t);}
 });
@@ -1900,12 +1971,12 @@ function openCols(){
       <input type="checkbox" data-ck="${c.k}" ${PREFS.hidden.includes(c.k)?'':'checked'}
         ${c.k==='sn'?'disabled':''}> ${esc(c.t)}${c.ro?' <span class="hint">calculated</span>':''}</label>`).join('')}`;
   const m=msgBox('Choose columns','',body,[['Reset',()=>{
-      PREFS.hidden=COLS.filter(c=>c.off).map(c=>c.k);PREFS.w={};savePrefs();renderGrid();},''],
+      PREFS.hidden=COLS.filter(c=>c.off).map(c=>c.k);PREFS.w={};savePrefs();renderAllGrids();},''],
     ['Done',null,'primary']]);
   m.querySelectorAll('[data-ck]').forEach(cb=>cb.onchange=()=>{
     const k=cb.dataset.ck;
     PREFS.hidden=cb.checked?PREFS.hidden.filter(x=>x!==k):[...PREFS.hidden,k];
-    savePrefs(); renderGrid();});
+    savePrefs(); renderAllGrids();});
 }
 
 
@@ -2011,13 +2082,13 @@ async function postComment(id,body){
   if(told.length)toast('Notified '+told.map(m=>m.name.split(' ')[0]).join(', '));
   CCOUNT[id]=(CCOUNT[id]||0)+1;
   await logAct('comment',AB.find(x=>x.id===id)||{id},'discussion','',body.trim().slice(0,60));
-  if(GRID&&GRID.win&&WINS.has(GRID.win.id))renderGrid();
+  renderAllGrids();
 }
 async function removeComment(id,cid){
   await api('lod_comments?id=eq.'+cid,{method:'PATCH',body:JSON.stringify({deletedAt:nowTs()})});
   CMTS[id]=(CMTS[id]||[]).filter(c=>c.id!==cid);
   CCOUNT[id]=Math.max(0,(CCOUNT[id]||1)-1);
-  if(GRID&&GRID.win&&WINS.has(GRID.win.id))renderGrid();
+  renderAllGrids();
 }
 function wireComments(root,id,redraw){
   const send=root.querySelector('#csend'), ta=root.querySelector('#cnew');
@@ -2506,7 +2577,7 @@ async function addPickedToPlan(){
       await loadPlanItems(planId);
       if(MOBILE){ MOB.pick=false; mobTab('plan'); }
       else { const w=[...WINS.values()].find(x=>x.kind==='plan'); if(w)await openPlans();
-             if(GRID&&GRID.win&&WINS.has(GRID.win.id))renderGrid(); }
+             renderAllGrids(); }
       toast(added+' added to the plan'+(already?', '+already+' already there':''));
     },'primary']]);
   wireAssignee();
@@ -3268,9 +3339,23 @@ function overdueHTML(limit){
       <td>${esc(r.holder)}</td></tr>`).join('')+`</tbody></table>`+
     (od.length>(limit||20)?`<div class="hint" style="padding:7px">Showing the ${limit||20} latest of ${od.length}.</div>`:'');
 }
-function openDashboard(){
-  const w=createWindow('dash','Dashboard','design deliverables progress',null,null,980,660);
+const DASHMETA={
+  all   :['dash',        'Dashboard',                 'design deliverables progress'],
+  hesco :['dash-hesco',  'Dashboard · HESCO → AWPT',  '148 submittals to AWPT'],
+  maaden:['dash-maaden', 'Dashboard · AWPT → Maaden', '130 submittals in Client scope']};
+function openDashboard(leg){
+  const m=DASHMETA[leg||'all']||DASHMETA.all;
+  const w=createWindow(m[0],m[1],m[2],null,null,980,660);
+  w.leg=leg||'all';
   renderDash(); return w;
+}
+/* Open one leg's register and its dashboard together, tiled. */
+function openLeg(leg){
+  const r=openRegister(leg), d=openDashboard(leg), D=desk();
+  const W=Math.max(520,Math.floor(D.clientWidth/2)-12), H=D.clientHeight-24;
+  Object.assign(r,{max:false,min:false,x:8,y:8,w:W,h:H});
+  Object.assign(d,{max:false,min:false,x:W+16,y:8,w:W,h:H});
+  applyRect(r); applyRect(d); focusWin(r.id); renderDock();
 }
 
 /* ============================================================
@@ -3364,16 +3449,30 @@ function niceDate(d){
 }
 
 function renderDash(){
-  const w=[...WINS.values()].find(x=>x.kind==='dash'); if(!w)return;
+  const keepLeg=LEG, keepGrid=GRID;
+  [...WINS.values()].filter(x=>x.kind==='dash'||x.kind==='dash-hesco'||x.kind==='dash-maaden')
+    .forEach(renderDashOne);
+  LEG=keepLeg; GRID=keepGrid;
+}
+function renderDashOne(w){
+  if(!w||!WINS.has(w.id))return;
+  /* the "Everything" dashboard follows the shared leg tabs; a leg dashboard is fixed */
+  LEG=(w.kind==='dash')?LEGALL:(w.leg||'all');
   /* The five headline figures, the recovery plan against what has actually
      been submitted, who is holding what, and the discipline split. Nothing
      after that — it was more than anyone reads in a morning. */
-  const legbar=`<div class="legbar">
+  const legbar=(w.kind==='dash')?`<div class="legbar">
     ${[['all','Everything','both legs'],
        ['hesco','HESCO → AWPT','the internal review loop'],
        ['maaden','AWPT → Maaden','what has gone to the Client']]
       .map(([k,t,sub])=>`<button class="legtab${LEG===k?' on':''}" data-leg="${k}">
-        <b>${t}</b><span>${sub}</span></button>`).join('')}</div>`;
+        <b>${t}</b><span>${sub}</span></button>`).join('')}</div>`
+    :`<div class="legbar"><button class="legtab on"><b>${
+        LEG==='hesco'?'HESCO → AWPT':'AWPT → Maaden'}</b><span>${
+        LEG==='hesco'?'every LOD document — 148 submittals'
+                     :'Client scope only — 130 submittals'}</span></button>
+      <button class="legtab" data-openreg="${LEG}"><b>▦ This leg's register</b>
+        <span>open it beside the dashboard</span></button></div>`;
   w.body.innerHTML=legbar+`<div class="dash">
     <div class="kpis">${kpiHTML()}</div>
     <div class="panel"><h3>Recovery plan — committed against submitted</h3>
@@ -3382,14 +3481,18 @@ function renderDash(){
     <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div></div>`;
   wireCharts(w.body); wireClock(w.body);
   w.body.querySelectorAll('[data-leg]').forEach(b=>b.onclick=()=>{
-    LEG=b.dataset.leg; renderDash(); if(GRID&&GRID.win&&WINS.has(GRID.win.id))renderGrid(); });
+    LEGALL=b.dataset.leg; renderDash(); renderAllGrids(); });
+  w.body.querySelectorAll('[data-openreg]').forEach(b=>b.onclick=()=>
+    openRegister(b.dataset.openreg));
   w.body.querySelectorAll('.rctbl tr[data-go]').forEach(tr=>{
     tr.style.cursor='pointer';
     tr.onclick=()=>{ const r=AB.find(x=>x.id===+tr.dataset.go);
-      if(r){ openRegister(); setTimeout(()=>{ const i=GRID.rows.findIndex(x=>x.id===r.id);
-        if(i>=0){ GRID.cur={r:i,c:0}; paintSel(); } },250); } };});
+      if(r){ const rw=openRegister(w.kind==='dash'?'all':(w.leg||'all'));
+        setTimeout(()=>{ const g=rw.grid; if(!g)return; GRID=g;
+          const i=g.rows.findIndex(x=>x.id===r.id);
+          if(i>=0){ g.cur={r:i,c:0}; g.sel={r1:i,c1:0,r2:i,c2:0}; paintSel(); } },250); } };});
 }
-function refresh(){ if(GRID&&GRID.win&&WINS.has(GRID.win.id))renderGrid(); renderDash(); renderDock();
+function refresh(){ renderAllGrids(); renderDash(); renderDock();
   refreshHistory();
   /* the plan reads each document's holder, so it goes stale the moment one moves */
   if(PLAN_DRAW&&[...WINS.values()].some(x=>x.kind==='plan'))PLAN_DRAW();
@@ -3608,7 +3711,7 @@ function mobRender(){
 const offBar=()=>LIVE?'':`<div class="offbar"><b>Saved snapshot.</b> This copy cannot reach the
   database, so the figures are as at 14 Aug 2026 and editing is off.</div>`;
 function mobDash(){
-  const s=stats();
+  const s=withLeg('all',stats);
   const t=(k,v,p,c,f)=>`<div class="kpi"><div class="k">${k}</div><div class="v">${v}</div>
     <div class="p">${p}</div><div class="bar"><i style="width:${f}%;background:${c}"></i></div></div>`;
   return offBar()+`<div class="mkpi">
@@ -4243,6 +4346,7 @@ async function loadData(){
     try{ const n=await api('lod_notifs?order=id.desc&limit=100');
       if(n.length!==NOTIFS.length){NOTIFS=n;updateBell();} }catch(e){} },90*1000);
   await loadRevs();
+  await loadLegs();
   await loadCommentCounts();
   await loadPlanning();
   await loadMembers();
@@ -4264,6 +4368,16 @@ function touchSeen(){
   _seenTimer=setInterval(()=>{ if(!document.hidden)write(); },5*60*1000);
 }
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden)touchSeen(); });
+async function loadLegs(){
+  try{
+    const [a,m]=await Promise.all([
+      api('lod_awpt_submittals?select=*&limit=2000'),
+      api('lod_maaden_submittals?select=*&limit=2000')]);
+    LEGA={}; (a||[]).forEach(x=>LEGA[x.docId]=x);
+    LEGM={}; (m||[]).forEach(x=>LEGM[x.docId]=x);
+    LEGOK=true;
+  }catch(e){ LEGOK=false; }
+}
 async function loadRevs(){
   try{
     const h=await api('lod_history?order=leg.asc,rev.asc,submitted.asc&limit=5000');
@@ -4273,6 +4387,14 @@ async function loadRevs(){
 async function loadRevsFor(id){
   try{ HIST[id]=await api('lod_history?docId=eq.'+id+'&order=leg.asc,rev.asc,submitted.asc'); }
   catch(e){}
+  /* the leg tables are maintained by triggers, so re-read this document's two rows */
+  if(LEGOK)try{
+    const [a,m]=await Promise.all([
+      api('lod_awpt_submittals?docId=eq.'+id+'&limit=1'),
+      api('lod_maaden_submittals?docId=eq.'+id+'&limit=1')]);
+    if(a&&a[0])LEGA[id]=a[0]; else delete LEGA[id];
+    if(m&&m[0])LEGM[id]=m[0]; else delete LEGM[id];
+  }catch(e){}
 }
 async function _oldLoadRevs(){
   try{
@@ -4572,8 +4694,10 @@ async function boot(){
 }
 
 /* topbar wiring */
-document.getElementById('b-reg').onclick=()=>{if(GRID&&WINS.has(GRID.win.id))focusWin(GRID.win.id);else openRegister();};
-document.getElementById('b-dash').onclick=openDashboard;
+document.getElementById('b-reg').onclick=()=>openRegister('all');
+document.getElementById('b-dash').onclick=()=>openDashboard('all');
+document.getElementById('b-hesco').onclick=()=>openLeg('hesco');
+document.getElementById('b-maaden').onclick=()=>openLeg('maaden');
 document.getElementById('b-plan').onclick=openPlans;
 document.getElementById('b-undo').onclick=undo;
 document.getElementById('b-redo').onclick=redo;
