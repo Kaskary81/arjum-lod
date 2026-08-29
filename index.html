@@ -1123,6 +1123,11 @@ const COLS=[
   {k:'plannedDate',  t:'Planned',      w:100, date:1},
   {k:'issuedDate',   t:'Issued',       w:100, ro:1, cls:'mono'},
   {k:'respondedDate',t:'Responded',    w:100, ro:1, cls:'mono'},
+  {k:'rev',          t:'Revision',     w:96,  ro:1, cls:'ctr mono',
+     calc:r=>{const h=(HIST[r.id]||[]);
+       if(!h.length)return '';
+       const last=h.slice().sort((a,b)=>(a.submitted||'')<(b.submitted||'')?-1:1).pop();
+       return last?(last.rev||''):'';}},
   {k:'remark',       t:'Remark',       w:250},
   /* HESCO → AWPT */
   {k:'hRev',  t:'HESCO rev',   w:88,  ro:1, cls:'ctr mono', leg:'hesco', calc:r=>legRev(r,'HESCO')},
@@ -1141,7 +1146,12 @@ const COLBY=Object.fromEntries(COLS.map(c=>[c.k,c]));
 
 /* ---------------- state ---------------- */
 let AB=[], LIVE=false, USER=null, MOBILE=false; let REVS={};
-let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{}, rowh:24, wrap:false};
+const SHOWN=['docNumber','title','reviewClass','scope','rev','status',
+             'issuedDate','respondedDate'];
+const DEFAULT_HIDDEN=COLS.filter(c=>!SHOWN.includes(c.k)&&!c.leg).map(c=>c.k);
+let PREFS={order:SHOWN.concat(COLS.map(c=>c.k).filter(k=>!SHOWN.includes(k))),
+           hidden:DEFAULT_HIDDEN, w:{}, rowh:24, wrap:false};
+const PREFS_V=2;   /* bumped when the default column set changes */
 let NOTIFS=[], ACTS=[];
 
 /* A date turned into yyyy-mm-dd must use LOCAL parts. toISOString() converts to
@@ -1152,7 +1162,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v40';
+const BUILD='LOD 2026-08-29 · v41';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1300,7 +1310,7 @@ function visCols(){
   if(LEG==='all')return base.filter(c=>!c.leg);
   /* on a leg, drop the columns that belong to the other one and the
      derived overall dates, then append this leg's own */
-  const drop=['issuedDate','respondedDate','credit','reviewDays'];
+  const drop=['issuedDate','respondedDate','credit','reviewDays','rev'];
   return base.filter(c=>!c.leg&&!drop.includes(c.k)).concat(legCols);
 }
 function colW(c){ return PREFS.w[c.k]||c.w; }
@@ -1326,6 +1336,9 @@ function applyPrefs(p){
   if(p.order)PREFS.order=COLS.map(c=>c.k).sort((a,b)=>{
     const ia=p.order.indexOf(a),ib=p.order.indexOf(b);
     return (ia<0?99:ia)-(ib<0?99:ib);});
+  if(p.v!==PREFS_V){ PREFS.hidden=DEFAULT_HIDDEN;
+    PREFS.order=SHOWN.concat(COLS.map(c=>c.k).filter(k=>!SHOWN.includes(k)));
+    return; }                      /* one-time reset to the new default columns */
   if(p.hidden)PREFS.hidden=p.hidden.filter(k=>COLBY[k]);
   if(p.w)PREFS.w=p.w;
   if(p.rowh)PREFS.rowh=p.rowh;
