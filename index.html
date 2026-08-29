@@ -937,6 +937,25 @@ body.mobile .panel h3{font-size:9.5px;font-weight:700;letter-spacing:.11em;text-
   background:#3f2d67;border-radius:8px;border:2px solid #120c21}
 :root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover{background:#5b3fa0}
 
+
+/* Wrap text — cells show their full contents over as many lines as needed.
+   Off by default so the grid stays dense and every row is the same height. */
+table.g.wrapped{table-layout:fixed}
+table.g.wrapped td{white-space:pre-wrap;overflow:visible;text-overflow:clip;
+  word-break:break-word;overflow-wrap:anywhere;vertical-align:top;height:auto}
+table.g.wrapped th{white-space:normal;word-break:break-word}
+table.g.wrapped tr{height:auto}
+table.g.wrapped td .cellin{white-space:pre-wrap}
+
+/* a horizontal scrollbar that is actually visible, not the thin overlay one */
+.gwrap{overflow:auto;height:100%;scrollbar-width:auto}
+.gwrap::-webkit-scrollbar{width:13px;height:13px}
+.gwrap::-webkit-scrollbar-track{background:var(--surface2)}
+.gwrap::-webkit-scrollbar-thumb{background:var(--line2,#3f2d67);border-radius:8px;
+  border:3px solid var(--surface2)}
+.gwrap::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+.gwrap::-webkit-scrollbar-corner{background:var(--surface2)}
+.btn.on{background:linear-gradient(180deg,var(--accent),#7c3aed);border-color:transparent;color:#fff}
 </style>
 </head>
 <body>
@@ -1066,7 +1085,7 @@ const COLBY=Object.fromEntries(COLS.map(c=>[c.k,c]));
 
 /* ---------------- state ---------------- */
 let AB=[], LIVE=false, USER=null, MOBILE=false; let REVS={};
-let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{}, rowh:24};
+let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{}, rowh:24, wrap:false};
 let NOTIFS=[], ACTS=[];
 
 /* A date turned into yyyy-mm-dd must use LOCAL parts. toISOString() converts to
@@ -1077,7 +1096,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-17 · v33';
+const BUILD='LOD 2026-08-29 · v34';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1246,6 +1265,7 @@ function applyPrefs(p){
   if(p.hidden)PREFS.hidden=p.hidden.filter(k=>COLBY[k]);
   if(p.w)PREFS.w=p.w;
   if(p.rowh)PREFS.rowh=p.rowh;
+  if(typeof p.wrap==='boolean')PREFS.wrap=p.wrap;
 }
 function loadPrefs(fromAccount){
   let p=null;
@@ -1423,6 +1443,8 @@ function renderGrid(){
   const cs=visCols();
   const tools=`<div class="wtools">
     <input class="f" id="gq" placeholder="Search document, discipline or action" style="min-width:210px;flex:1" value="${esc(GRID.q)}">
+    <button class="btn${PREFS.wrap?' on':''}" id="gwrapbtn" title="Show the full text of every cell">
+      ${PREFS.wrap?'↵ Wrapped':'↵ Wrap text'}</button>
     <select class="f" id="gfd"><option value="">All disciplines</option>${
       DISCS.map(d=>`<option${GRID.fd===d?' selected':''}>${esc(d)}</option>`).join('')}</select>
     <select class="f" id="gfs"><option value="">All statuses</option>${
@@ -1456,7 +1478,8 @@ function renderGrid(){
         PICKED.has(r.id)?' checked':''}><span class="rn">${ri+1}</span><span class="rr"></span></th>${
       cs.map((c,ci)=>`<td data-r="${ri}" data-c="${ci}" class="${c.cls||''}">${cellText(r,c)}</td>`).join('')}
     </tr>`).join('')}</tbody>`;
-  w.body.innerHTML=tools+`<div class="gwrap" id="gwrap"><table class="g">${head}${body}</table></div>`;
+  w.body.innerHTML=tools+`<div class="gwrap" id="gwrap"><table class="g${
+      PREFS.wrap?' wrapped':''}">${head}${body}</table></div>`;
   document.getElementById('gcount').innerHTML=rows.length+' of '+AB.length+
     (PICKED.size?` · <b>${PICKED.size} ticked</b> <button class="lnk" id="gclr">clear</button>`:'');
   wireGrid();
@@ -1470,6 +1493,8 @@ function wireGrid(){
   $('gfs').onchange=e=>{GRID.fs=e.target.value;GRID.fage=null;GRID.fageL='';renderGrid();};
   $('gfh').onchange=e=>{GRID.fh=e.target.value;GRID.fage=null;GRID.fageL='';renderGrid();};
   $('gfx').onchange=e=>{GRID.fx=e.target.value;GRID.fage=null;GRID.fageL='';renderGrid();};
+  const wb=$('gwrapbtn');
+  if(wb)wb.onclick=()=>{ PREFS.wrap=!PREFS.wrap; savePrefs(); renderGrid(); };
   $('gadd').onclick=addRow;
   $('gdel').onclick=deleteSelected;
   $('gcols').onclick=openCols;
