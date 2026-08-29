@@ -997,6 +997,18 @@ table.rctbl tr[data-go]:hover td{background:var(--chip)}
 .legtab:hover{border-color:var(--line2,#3f2d67)}
 .legtab b{display:block;font-size:13px;color:var(--ink)}
 .legtab span{font-size:11px;color:var(--muted)}
+.legkpi{cursor:pointer}
+.legkpi .v small{font-size:12px;font-weight:600;opacity:.62;margin-left:6px}
+.legbar100{margin-top:12px}
+.legtot{margin-top:9px;font-size:12.5px;color:var(--muted)}
+.legtot .bad{color:var(--critical)}
+.hint.bad{color:var(--critical)}
+.tgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px}
+.tcell{border:1px solid var(--ring);border-radius:10px;padding:10px 11px;background:var(--surface)}
+.tcell .tk{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tcell .tv{font-size:21px;font-weight:650;margin:3px 0 1px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.tcell .ts{font-size:11.5px;color:var(--muted)}
 .legtab.on{border-color:var(--accent);background:linear-gradient(180deg,var(--accent-soft),transparent);
   box-shadow:0 0 0 3px rgba(168,85,247,.14)}
 .legtab.on b{color:#e9d5ff}
@@ -1103,8 +1115,19 @@ const COLOR={'Code A':'#0f9d58','Deemed':'#4bb07a','Code B':'#6fc38a','Under rev
 /* Each leg has its own answer vocabulary. The document's overall status is
    written in AWPT's terms, so on a leg register the Status column shows THAT
    leg's own outcome instead — the Maaden register reads Maaden's codes. */
-const LEGSTATUSES={hesco:['Replied','Awaiting reply','Not submitted'],
-  maaden:['Code A','Code B','Under Client review','Replied','Not submitted']};
+const LEGSTATUSES={hesco:['RNC','RWC','Awaiting reply','Not submitted'],
+  maaden:['Code A','Code B','Rejected','Replied','Under Client review','Not submitted']};
+/* Maaden grades A / C / R / I on their review stamp — there is no "B" in the
+   Client's scheme, so what the workbook calls Code B is their C. The stored
+   values are left alone (the credit table and every past reconciliation depend
+   on them); only the Client leg is labelled in Maaden's own words. */
+const MAADEN_GRADE={
+  'Code A':   {g:'A', t:'Accepted',               d:'accepted'},
+  'Code B':   {g:'C', t:'Proceed with exceptions',d:'proceed with exceptions to next submission and revision'},
+  'Rejected': {g:'R', t:'Do not proceed',         d:'revise as noted and resubmit'},
+  'Replied':  {g:'I', t:'For information',        d:'issued to the Client for information'},
+  'Deemed':   {g:'A', t:'Deemed accepted',        d:'no reply within 10 working days'}};
+const maadenLabel=v=>{const m=MAADEN_GRADE[v]; return m?m.g+' — '+m.t:(v||'');};
 const LCOLOR={'Code A':'#0f9d58','Code B':'#6fc38a','Under Client review':'#f0b429',
   'Replied':'#6b7f92','Awaiting reply':'#f0b429','Not submitted':'#cbd2d8'};
 const HCOLOR={'HESCO':'#d64545','AWPT':'#f0b429',"Maaden":'#2a78d6','Closed':'#0f9d58'};
@@ -1143,13 +1166,23 @@ const COLS=[
   {k:'hSent', t:'Sent to AWPT',w:112, ro:1, cls:'mono',     leg:'hesco', calc:r=>legSent(r,'HESCO')},
   {k:'hBack', t:'AWPT replied',w:112, ro:1, cls:'mono',     leg:'hesco', calc:r=>legReplied(r,'HESCO')},
   {k:'hOut',  t:'AWPT status', w:150, ro:1, cls:'ctr', pill:1, leg:'hesco', calc:r=>legState(r,'HESCO')},
+  {k:'hDays', t:'Days with AWPT',w:110,ro:1, cls:'num',      leg:'hesco',
+     calc:r=>{const c=lastCycle(r,'HESCO');
+       if(!c)return '';
+       if(c.days!=null)return c.days;
+       return c.submitted&&!c.responded?days(c.submitted,today)+'*':'';}},
   {k:'hN',    t:'Cycles',      w:70,  ro:1, cls:'num',      leg:'hesco',
      calc:r=>{const t=legRow(r,'hesco');return (t?t.cycles:legCycles(r,'HESCO').length)||'';}},
   /* AWPT → Maaden */
   {k:'mRev',  t:'Maaden rev',  w:92,  ro:1, cls:'ctr mono', leg:'maaden', calc:r=>legRev(r,'Maaden')},
   {k:'mSent', t:'Sent to Maaden',w:118,ro:1, cls:'mono',    leg:'maaden', calc:r=>legSent(r,'Maaden')},
   {k:'mBack', t:'Maaden replied',w:118,ro:1, cls:'mono',    leg:'maaden', calc:r=>legReplied(r,'Maaden')},
-  {k:'mOut',  t:'Maaden status',w:150, ro:1, cls:'ctr', pill:1,leg:'maaden', calc:r=>legState(r,'Maaden')},
+  {k:'mOut',  t:'Maaden status',w:190, ro:1, cls:'ctr', pill:1,leg:'maaden', calc:r=>legState(r,'Maaden')},
+  {k:'mDays', t:'Days with Maaden',w:118,ro:1,cls:'num',    leg:'maaden',
+     calc:r=>{const c=lastCycle(r,'Maaden');
+       if(!c)return '';
+       if(c.days!=null)return c.days;
+       return c.submitted&&!c.responded?days(c.submitted,today)+'*':'';}},
   {k:'mN',    t:'Cycles',       w:70,  ro:1, cls:'num',     leg:'maaden',
      calc:r=>{const t=legRow(r,'maaden');return (t?t.cycles:legCycles(r,'Maaden').length)||'';}}
 ];
@@ -1180,7 +1213,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v47';
+const BUILD='LOD 2026-08-29 · v51';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1563,10 +1596,10 @@ function gridRows(){
   });
   return rows;
 }
-function statusPill(v){
+function statusPill(v,label){
   const k=v||'Not issued';
   const col=COLOR[k]||LCOLOR[k]||'#8c9aa8';
-  return `<span class="pill" style="background:${col}22;color:${col}">${esc(k)}</span>`;
+  return `<span class="pill" style="background:${col}22;color:${col}">${esc(label||k)}</span>`;
 }
 /* ============================================================
    The two legs. HESCO → AWPT is the internal loop; AWPT → Maaden
@@ -1597,7 +1630,7 @@ function legState(r,leg){
 }
 function cellText(r,c){
   const v=c.calc?c.calc(r):(r[c.k]??'');
-  if(c.pill)return statusPill(v);
+  if(c.pill)return statusPill(v, c.k==='mOut'?maadenLabel(v):null);
   if(c.k==='title'&&CCOUNT[r.id])
     return esc(v)+'<span class="cbadge" title="'+CCOUNT[r.id]+' comment(s)">'+CCOUNT[r.id]+'</span>';
   return esc(v);
@@ -1631,7 +1664,8 @@ function renderGrid(g){
       DISCS.map(d=>`<option${GRID.fd===d?' selected':''}>${esc(d)}</option>`).join('')}</select>
     <select class="f" id="gfs"><option value="">All statuses</option>${
       (LEG==='all'?STATUSES:LEGSTATUSES[LEG]).map(k=>
-        `<option${GRID.fs===k?' selected':''}>${esc(k)}</option>`).join('')}</select>
+        `<option value="${esc(k)}"${GRID.fs===k?' selected':''}>${
+          esc(LEG==='maaden'?maadenLabel(k):k)}</option>`).join('')}</select>
     <select class="f" id="gfh"><option value="">Anyone's court</option>${
       HOLDERS.map(k=>`<option${GRID.fh===k?' selected':''}>${esc(k)}</option>`).join('')}</select>
     <select class="f" id="gfx">
@@ -3448,6 +3482,130 @@ function niceDate(d){
   return dt.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
 }
 
+/* ============================================================
+   A dashboard per phase. Each leg is a closed population: every
+   document on it is in exactly one state, so the cards add up to
+   the register's own total and the percentages close at 100.
+   The recovery plan is a HESCO-to-AWPT commitment, so it appears
+   on that leg only.
+   ============================================================ */
+const LEGSTATE=leg=>leg==='hesco'
+  ? [{k:'RNC',           t:'Cleared by AWPT',  s:'reviewed with no comments',        c:'#0f9d58'},
+     {k:'RWC',           t:'Back with HESCO',  s:'returned with comments to resolve',c:'#d64545'},
+     {k:'Awaiting reply',t:'With AWPT now',    s:'submitted, awaiting the review',   c:'#f0b429'},
+     {k:'Not submitted', t:'Never submitted',  s:'no cycle to AWPT at all',          c:'#8c9aa8'}]
+  : [{k:'Code A',   t:'A — Accepted',              s:'accepted',                          c:'#0f9d58'},
+     {k:'Code B',   t:'C — Proceed with exceptions',s:'to the next submission and revision',c:'#6fc38a'},
+     {k:'Rejected', t:'R — Do not proceed',         s:'revise as noted and resubmit',      c:'#d64545'},
+     {k:'Replied',  t:'I — For information',        s:'issued for information',            c:'#6b7f92'},
+     {k:'Under Client review',t:'With Maaden now',  s:'sent, awaiting the grade',          c:'#f0b429'},
+     {k:'Not submitted',      t:'Not submitted',    s:'the Client has not seen it',        c:'#cbd2d8'}];
+const legOf=(r,leg)=>legState(r,leg==='hesco'?'HESCO':'Maaden');
+/* whole percentages that total exactly 100 — largest remainder, so a card row
+   never reads 99% or 101% */
+function pct100(ns){
+  const tot=ns.reduce((a,b)=>a+b,0); if(!tot)return ns.map(()=>0);
+  const raw=ns.map(n=>n/tot*100), fl=raw.map(x=>Math.floor(x));
+  let rem=100-fl.reduce((a,b)=>a+b,0);
+  raw.map((x,i)=>[x-fl[i],i]).sort((a,b)=>b[0]-a[0]).forEach(([,i])=>{ if(rem>0){fl[i]++;rem--;} });
+  return fl;
+}
+function legSplit(leg){
+  const SET=DOCS(), states=LEGSTATE(leg);
+  const rows=states.map(x=>({...x, n:SET.filter(r=>legOf(r,leg)===x.k).length}));
+  const named=rows.reduce((t,x)=>t+x.n,0);
+  if(SET.length-named>0)
+    rows.push({k:'__other',t:'Other',s:'a state not listed above',c:'#a7b2bd',n:SET.length-named});
+  const ps=pct100(rows.map(x=>x.n));
+  rows.forEach((x,i)=>x.p=ps[i]);
+  return {rows, total:SET.length};
+}
+function legCards(leg){
+  const {rows,total}=legSplit(leg);
+  const tiles=rows.map(x=>`<div class="kpi legkpi" data-lstate="${esc(x.k)}">
+      <div class="k">${esc(x.t)}</div><div class="v">${x.n}<small>${x.p}%</small></div>
+      <div class="p">${esc(x.s)}</div>
+      <div class="bar"><i style="width:${x.p}%;background:${x.c}"></i></div></div>`).join('');
+  const bar=`<div class="ballbar legbar100">${rows.filter(x=>x.n).map(x=>
+      `<i data-lstate="${esc(x.k)}" style="width:${x.n/(total||1)*100}%;background:${x.c}"
+          title="${esc(x.t)} — ${x.n}"><b>${x.n}</b></i>`).join('')}</div>`;
+  const sum=rows.reduce((t,x)=>t+x.n,0), psum=rows.reduce((t,x)=>t+x.p,0);
+  return `<div class="kpis">${tiles}</div>${bar}
+    <div class="legtot"><b>${sum} of ${total}</b> documents · <b>${psum}%</b> —
+      every document on this leg is in exactly one of these states${
+        sum===total&&psum===100?'':' <span class="bad">(does not close — tell Claude)</span>'}</div>`;
+}
+function legDiscipline(leg){
+  const SET=DOCS(), states=LEGSTATE(leg);
+  const ds=[...new Set(SET.map(r=>r.discipline))].filter(Boolean)
+    .map(d=>({d,n:SET.filter(r=>r.discipline===d).length})).sort((a,b)=>b.n-a.n);
+  if(!ds.length)return '<div class="empty">No disciplines recorded.</div>';
+  const max=ds[0].n;
+  return `<div class="chart dbars" data-chart="legdisc">${ds.map(x=>{
+    const parts=states.map(st=>({st,v:SET.filter(r=>r.discipline===x.d&&legOf(r,leg)===st.k).length}))
+      .filter(p=>p.v);
+    const done=SET.filter(r=>r.discipline===x.d&&legOf(r,leg)===states[0].k).length;
+    return `<div class="drow"><div class="dlab" title="${esc(x.d)}">${esc(x.d)}</div>
+      <div class="dtrack"><div class="dbar" style="width:${x.n/max*100}%">${parts.map(p=>
+        `<i data-d="${esc(x.d)}" data-lstate="${esc(p.st.k)}"
+            title="${esc(x.d)} — ${p.v} ${esc(p.st.t)}"
+            style="flex:${p.v};background:${p.st.c}"></i>`).join('')}</div></div>
+      <div class="dn">${x.n}</div><div class="dp">${x.n?Math.round(done/x.n*100):0}%</div></div>`;}).join('')}
+    <div class="balllg" style="margin-top:10px">${states.map(st=>
+      `<button class="blg" data-lstate="${esc(st.k)}"><i style="background:${st.c}"></i>
+        <span>${esc(st.t)}</span><b>${SET.filter(r=>legOf(r,leg)===st.k).length}</b></button>`).join('')}</div>
+    <div class="hint" style="margin-top:6px">Each discipline adds up to its own total;
+      the right-hand figure is the share ${leg==='hesco'?'cleared by AWPT':'approved as Code A'}.</div>`;
+}
+function legTurnaround(leg){
+  const L=leg==='hesco'?'HESCO':'Maaden', SET=DOCS(), cyc=[];
+  SET.forEach(r=>(HIST[r.id]||[]).filter(h=>h.leg===L).forEach(h=>cyc.push(h)));
+  if(!cyc.length)return '<div class="empty">No submissions recorded on this leg.</div>';
+  const closed=cyc.filter(h=>h.days!=null&&h.days>=0).map(h=>h.days).sort((a,b)=>a-b);
+  const open=cyc.filter(h=>(h.submitted||'')&&!(h.responded||''));
+  const bad=cyc.filter(h=>h.days!=null&&h.days<0).length;
+  const avg=closed.length?Math.round(closed.reduce((a,b)=>a+b,0)/closed.length*10)/10:null;
+  const med=closed.length?closed[Math.floor(closed.length/2)]:null;
+  const waiting=open.map(h=>days(h.submitted,today)).sort((a,b)=>b-a);
+  const cell=(t,v,s)=>`<div class="tcell"><div class="tk">${t}</div><div class="tv">${v}</div>
+      <div class="ts">${s||''}</div></div>`;
+  return `<div class="tgrid">
+      ${cell('Cycles',cyc.length,closed.length+' answered · '+open.length+' still out')}
+      ${cell('Average',avg==null?'—':avg+' d','from sent to reply')}
+      ${cell('Typical',med==null?'—':med+' d','the middle cycle')}
+      ${cell('Longest',closed.length?closed[closed.length-1]+' d':'—','worst answered cycle')}
+      ${cell('Waiting now',waiting.length?waiting[0]+' d':'—',
+             waiting.length?'the oldest of '+waiting.length+' open':'nothing open')}
+    </div>${bad?`<div class="hint bad" style="margin-top:8px">${bad} cycle(s) carry a reply
+      dated before the submission — the dates need checking.</div>`:''}`;
+}
+function legDashHTML(leg){
+  const plan=leg==='hesco'
+    ? `<div class="panel"><h3>Recovery plan — committed against submitted to AWPT</h3>
+         ${recoveryHTML()}</div>` : '';
+  return `<div class="dash">
+    <div class="panel"><h3>Where the ${leg==='hesco'?'148 submittals to AWPT':'130 Client submittals'} stand</h3>
+      ${legCards(leg)}</div>
+    ${plan}
+    <div class="panel"><h3>How long ${leg==='hesco'?'AWPT':'Maaden'} takes to answer</h3>
+      ${legTurnaround(leg)}</div>
+    <div class="panel"><h3>By discipline</h3>${legDiscipline(leg)}</div></div>`;
+}
+function wireLegDash(w,leg){
+  const go=st=>{ const rw=openRegister(leg); const g=rw.grid; if(!g)return;
+    GRID=g; g.q=''; g.fd=''; g.fh=''; g.fx=''; g.fage=null; g.fageL='';
+    g.fs=(st==='__other'?'':st); renderGrid(g); focusWin(rw.id); };
+  w.body.querySelectorAll('[data-lstate]').forEach(el=>{
+    el.style.cursor='pointer';
+    el.onclick=()=>go(el.dataset.lstate);});
+  w.body.querySelectorAll('.rctbl tr[data-go]').forEach(tr=>{
+    tr.style.cursor='pointer';
+    tr.onclick=()=>{ const r=AB.find(x=>x.id===+tr.dataset.go);
+      if(!r)return; const rw=openRegister(leg); const g=rw.grid; if(!g)return;
+      GRID=g; setTimeout(()=>{ const i=g.rows.findIndex(x=>x.id===r.id);
+        if(i>=0){ g.cur={r:i,c:0}; g.sel={r1:i,c1:0,r2:i,c2:0}; paintSel(); } },250); };});
+}
+
 function renderDash(){
   const keepLeg=LEG, keepGrid=GRID;
   [...WINS.values()].filter(x=>x.kind==='dash'||x.kind==='dash-hesco'||x.kind==='dash-maaden')
@@ -3473,6 +3631,13 @@ function renderDashOne(w){
                      :'Client scope only — 130 submittals'}</span></button>
       <button class="legtab" data-openreg="${LEG}"><b>▦ This leg's register</b>
         <span>open it beside the dashboard</span></button></div>`;
+  if(w.kind!=='dash'){
+    w.body.innerHTML=legbar+legDashHTML(LEG);
+    w.body.querySelectorAll('[data-openreg]').forEach(b=>b.onclick=()=>
+      openRegister(b.dataset.openreg));
+    wireLegDash(w,LEG);
+    return;
+  }
   w.body.innerHTML=legbar+`<div class="dash">
     <div class="kpis">${kpiHTML()}</div>
     <div class="panel"><h3>Recovery plan — committed against submitted</h3>
