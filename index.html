@@ -1247,7 +1247,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-30 · v58';
+const BUILD='LOD 2026-08-30 · v59';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -4032,6 +4032,8 @@ function mobRender(){
   if(mb){
     mb.querySelectorAll('[data-leg]').forEach(b=>b.onclick=()=>{
       LEG=b.dataset.leg; mobRender(); });
+    if(MOB.view==='dash'&&(LEG==='hesco'||LEG==='maaden'))
+      wireLegDash({body:mb}, LEG);
     mb.querySelectorAll('.rctbl tr[data-go]').forEach(tr=>{
       tr.style.cursor='pointer';
       tr.onclick=()=>{ MOB.view='one'; MOB.id=+tr.dataset.go; mobRender(); };});
@@ -4041,22 +4043,26 @@ function mobRender(){
 const offBar=()=>LIVE?'':`<div class="offbar"><b>Saved snapshot.</b> This copy cannot reach the
   database, so the figures are as at 14 Aug 2026 and editing is off.</div>`;
 function mobDash(){
-  /* The phone shows the same dashboard as the desktop — the same leg switch,
-     the same five figures, the same three sections. It had been left behind on
-     an older layout of ten tiles and seven panels, which meant the two devices
-     told different stories about the same project. */
+  /* The phone draws whatever the desktop would draw for the same leg:
+     "Everything" gets the five figures, the recovery plan, ball in court and
+     the discipline split; a leg gets its own cards — the partition that closes
+     at 100% — plus turnaround and that leg's discipline chart. Previously the
+     phone always drew the Everything layout, so the leg cards never appeared. */
   const legbar=`<div class="legbar">
     ${[['all','Everything','both legs'],
-       ['hesco','HESCO → AWPT','internal review'],
-       ['maaden','AWPT → Maaden','to the Client']]
+       ['hesco','HESCO → AWPT','148 submittals'],
+       ['maaden','AWPT → Maaden','130 Client submittals']]
       .map(([k,t,sub])=>`<button class="legtab${LEG===k?' on':''}" data-leg="${k}">
         <b>${t}</b><span>${sub}</span></button>`).join('')}</div>`;
+  if(LEG==='hesco'||LEG==='maaden')
+    return offBar()+legbar+legDashHTML(LEG);
   return offBar()+legbar+
-    `<div class="mkpi">${kpiHTML()}</div>
-     <div class="panel"><h3>Recovery plan — committed against submitted</h3>
-       ${recoveryHTML()}</div>
-     <div class="panel"><h3>Ball in court</h3>${ballChart()}</div>
-     <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div>`;
+    `<div class="dash">
+       <div class="kpis">${kpiHTML()}</div>
+       <div class="panel"><h3>Recovery plan — committed against submitted</h3>
+         ${recoveryHTML()}</div>
+       <div class="panel"><h3>Ball in court</h3>${ballChart()}</div>
+       <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div></div>`;
 }
 
 function mobFilters(){
