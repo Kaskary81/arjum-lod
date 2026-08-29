@@ -1115,8 +1115,13 @@ const COLOR={'Code A':'#0f9d58','Deemed':'#4bb07a','Code B':'#6fc38a','Under rev
 /* Each leg has its own answer vocabulary. The document's overall status is
    written in AWPT's terms, so on a leg register the Status column shows THAT
    leg's own outcome instead — the Maaden register reads Maaden's codes. */
-const LEGSTATUSES={hesco:['RNC','RWC','Replied','Awaiting reply','Not submitted'],
-  maaden:['Code A','Code B','Rejected','Replied','Under Client review','Not submitted']};
+const LEGSTATUSES={hesco:['RNC','RWC','Replied','Awaiting reply','On hold','Not submitted'],
+  maaden:['Code A','Code B','Rejected','Replied','Under Client review','On hold','Not submitted']};
+/* A held deliverable is waiting on a prerequisite, not late work. The recovery
+   plan marks it purple (FF7030A0 "On Hold"); the register uses the same colour,
+   the state takes precedence over the leg's own, and the clock stops. */
+const HOLDCOLOR='#7030a0';
+const isHold=r=>!!(r&&r.onHold);
 /* Maaden grades A / C / R / I on their review stamp — there is no "B" in the
    Client's scheme, so what the workbook calls Code B is their C. The stored
    values are left alone (the credit table and every past reconciliation depend
@@ -1129,7 +1134,8 @@ const MAADEN_GRADE={
   'Deemed':   {g:'A', t:'Deemed accepted',        d:'no reply within 10 working days'}};
 const maadenLabel=v=>{const m=MAADEN_GRADE[v]; return m?m.g+' — '+m.t:(v||'');};
 const LCOLOR={'Code A':'#0f9d58','Code B':'#6fc38a','Under Client review':'#f0b429',
-  'Replied':'#6b7f92','Awaiting reply':'#f0b429','Not submitted':'#cbd2d8'};
+  'Replied':'#6b7f92','Awaiting reply':'#f0b429','Not submitted':'#cbd2d8',
+  'On hold':'#7030a0'};
 const HCOLOR={'HESCO':'#d64545','AWPT':'#f0b429',"Maaden":'#2a78d6','Closed':'#0f9d58'};
 const DISCS=['ARCH','Civil','Electric','General','ICT','ICT/Mech','Mech/ELC',
   'Mechanical','Process','Project Man','Structural'];
@@ -1161,6 +1167,9 @@ const COLS=[
        const last=h.slice().sort((a,b)=>(a.submitted||'')<(b.submitted||'')?-1:1).pop();
        return last?(last.rev||''):'';}},
   {k:'remark',       t:'Remark',       w:250},
+  {k:'onHold',       t:'On hold',      w:88, ro:1, cls:'ctr',
+     calc:r=>isHold(r)?'Yes':''},
+  {k:'holdNote',     t:'Reason held',  w:230},
   /* HESCO → AWPT */
   {k:'hRev',  t:'HESCO rev',   w:88,  ro:1, cls:'ctr mono', leg:'hesco', calc:r=>legRev(r,'HESCO')},
   {k:'hSent', t:'Sent to AWPT',w:112, ro:1, cls:'mono',     leg:'hesco', calc:r=>legSent(r,'HESCO')},
@@ -1202,7 +1211,7 @@ const SHOWN=['docNumber','title','reviewClass','scope','rev','status',
 const DEFAULT_HIDDEN=COLS.filter(c=>!SHOWN.includes(c.k)&&!c.leg).map(c=>c.k);
 let PREFS={order:SHOWN.concat(COLS.map(c=>c.k).filter(k=>!SHOWN.includes(k))),
            hidden:DEFAULT_HIDDEN, w:{}, rowh:24, wrap:false};
-const PREFS_V=2;   /* bumped when the default column set changes */
+const PREFS_V=3;   /* bumped when the default column set changes */
 let NOTIFS=[], ACTS=[];
 
 /* A date turned into yyyy-mm-dd must use LOCAL parts. toISOString() converts to
@@ -1213,7 +1222,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v54';
+const BUILD='LOD 2026-08-29 · v55';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1622,6 +1631,7 @@ const legOutcome=(r,leg)=>{const c=lastCycle(r,leg);
   if(c.status)return c.status;
   return c.submitted&&!c.responded?'Awaiting reply':'';};
 function legState(r,leg){
+  if(isHold(r))return 'On hold';
   const t=legRow(r,leg);
   if(t)return t.outcome||'Not submitted';
   const c=lastCycle(r,leg);
@@ -1632,6 +1642,8 @@ function legState(r,leg){
 function cellText(r,c){
   const v=c.calc?c.calc(r):(r[c.k]??'');
   if(c.pill){
+    if((c.k==='hOut'||c.k==='mOut')&&isHold(r))
+      return statusPill('On hold', 'On hold', r.holdNote||'Held pending prerequisites');
     if(c.k==='hOut'&&isInferred(lastCycle(r,'HESCO')))
       return statusPill(v, v+' ~',
         'Worked out from the resubmission pattern, not recorded — this is an AWPT-only document, so no Client submission can evidence a clearance');
@@ -3075,6 +3087,7 @@ const creditOf=r=>(CREDIT[r.status]!=null?CREDIT[r.status]:0);
 /* Days in the current court, counted live from the date that party received it.
    Falls back to the imported figure only where no start date is known. */
 function heldDays(r){
+  if(isHold(r))return null;          /* held: the clock is not running on anyone */
   if(r.holder==='Closed')return null;
   if(r.heldSince)return days(r.heldSince,today);
   return (r.daysHeld==null||r.daysHeld==='')?null:+r.daysHeld;
@@ -3500,12 +3513,14 @@ const LEGSTATE=leg=>leg==='hesco'
      {k:'RWC',           t:'Back with HESCO',  s:'returned with comments to resolve',c:'#d64545'},
      {k:'Replied',       t:'Reviewed',         s:'answered, no code — AWPT-only',    c:'#6b7f92'},
      {k:'Awaiting reply',t:'With AWPT now',    s:'submitted, awaiting the review',   c:'#f0b429'},
+     {k:'On hold',       t:'On hold',          s:'held pending prerequisites',       c:HOLDCOLOR},
      {k:'Not submitted', t:'Never submitted',  s:'no cycle to AWPT at all',          c:'#8c9aa8'}]
   : [{k:'Code A',   t:'A — Accepted',              s:'accepted',                          c:'#0f9d58'},
      {k:'Code B',   t:'C — Proceed with exceptions',s:'to the next submission and revision',c:'#6fc38a'},
      {k:'Rejected', t:'R — Do not proceed',         s:'revise as noted and resubmit',      c:'#d64545'},
      {k:'Replied',  t:'I — For information',        s:'issued for information',            c:'#6b7f92'},
      {k:'Under Client review',t:'With Maaden now',  s:'sent, awaiting the grade',          c:'#f0b429'},
+     {k:'On hold',            t:'On hold',          s:'held pending prerequisites',        c:HOLDCOLOR},
      {k:'Not submitted',      t:'Not submitted',    s:'the Client has not seen it',        c:'#cbd2d8'}];
 const legOf=(r,leg)=>legState(r,leg==='hesco'?'HESCO':'Maaden');
 /* AWPT-only documents never reach the Client, so nothing evidences a clearance:
