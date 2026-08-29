@@ -1180,6 +1180,14 @@ const COLS=[
        if(!c)return '';
        if(c.days!=null)return c.days;
        return c.submitted&&!c.responded?days(c.submitted,today)+'*':'';}},
+  {k:'toClient', t:'To Maaden', w:112, ro:1, cls:'ctr mono', leg:'hesco',
+     calc:r=>{
+       if(!isClientScope(r))return 'AWPT-only';
+       const t=legRow(r,'maaden');
+       const rev=t?(t.rev||''):legRev(r,'Maaden');
+       const sent=t?(t.sent||''):legSent(r,'Maaden');
+       if(rev)return rev;            /* the revision the Client last received */
+       return sent?'sent':'—';       /* '—' = never submitted to Maaden */ }},
   {k:'hN',    t:'Cycles',      w:70,  ro:1, cls:'num',      leg:'hesco',
      calc:r=>{const t=legRow(r,'hesco');return (t?t.cycles:legCycles(r,'HESCO').length)||'';}},
   /* AWPT → Maaden */
@@ -1222,7 +1230,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v55';
+const BUILD='LOD 2026-08-29 · v56';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
