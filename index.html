@@ -1120,8 +1120,6 @@ const COLBY=Object.fromEntries(COLS.map(c=>[c.k,c]));
 let AB=[], LIVE=false, USER=null, MOBILE=false; let REVS={};
 let PREFS={order:COLS.map(c=>c.k), hidden:COLS.filter(c=>c.off).map(c=>c.k), w:{}, rowh:24, wrap:false};
 let NOTIFS=[], ACTS=[];
-let DASH_FULL=false;
-try{ DASH_FULL = localStorage.getItem('lod-dashfull')==='1'; }catch(e){}
 
 /* A date turned into yyyy-mm-dd must use LOCAL parts. toISOString() converts to
    UTC first, so in Riyadh (UTC+3) local midnight lands on the previous day and
@@ -1131,7 +1129,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v37';
+const BUILD='LOD 2026-08-29 · v38';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2917,7 +2915,8 @@ function kpiHTML(){
     tile('With AWPT',s.awpt,'to review and issue','#f0b429',pc(s.awpt))+
     tile("With Maaden",s.maaden,'awaiting the Client','#2a78d6',pc(s.maaden))+
     tile('Closed',s.closed,'approved, no action','#0f9d58',pc(s.closed));
-  if(!DASH_FULL)return core;
+  return core;
+  /* the scope and issued splits live in the register's own filters now */
   return core+
     tile('Base scope',s.basePct+'%',s.baseN+' documents','#0f9d58',s.basePct)+
     tile('Optional scope',s.optPct+'%',s.optN+' documents','#f0b429',s.optPct)+
@@ -3215,48 +3214,21 @@ function niceDate(d){
 
 function renderDash(){
   const w=[...WINS.values()].find(x=>x.kind==='dash'); if(!w)return;
-  /* Four numbers, three charts, and the work that needs chasing. Everything
-     else is a click away — the dashboard used to show thirteen panels at once
-     (two of them twice over), which is not something anyone can read. */
-  const more = DASH_FULL ? `
-    <div class="panel"><h3>Where the credit sits</h3>${creditChart()}</div>
-    <div class="panel"><h3>Issued from HESCO to AWPT</h3>${issuedChart()}</div>
-    <div class="panel"><h3>Progress by review class</h3>${classChart()}</div>
-    <div class="g2">
-      <div class="panel"><h3>Issued to the Client — cumulative</h3>${curveChart()}</div>
-      <div class="panel"><h3>How long documents have been held</h3>${ageingChart()}</div>
-    </div>
-    <div class="panel"><h3>Progress over time</h3>${trendHTML()}
-      <div class="planbar" style="margin-top:10px">
-        <button class="btn" id="dsnap"${canEdit()?'':' disabled'}>Record today's snapshot</button></div></div>
-    <div class="panel"><h3>Needs attention</h3>${attentionHTML()}</div>` : '';
-
+  /* The five headline figures, the recovery plan against what has actually
+     been submitted, who is holding what, and the discipline split. Nothing
+     after that — it was more than anyone reads in a morning. */
   w.body.innerHTML=`<div class="dash">
     <div class="kpis">${kpiHTML()}</div>
     <div class="panel"><h3>Recovery plan — committed against submitted</h3>
       ${recoveryHTML()}</div>
     <div class="panel"><h3>Ball in court</h3>${ballChart()}</div>
-    <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div>
-    <div class="panel"><h3>Past the review window</h3>${clockHTML()}
-      <div class="planbar" style="margin-top:10px">
-        <button class="btn" id="descal">Export the overdue list</button></div></div>
-    <div class="panel"><h3>Past their planned submission date</h3>${overdueHTML(12)}</div>
-    ${more}
-    <div class="planbar" style="justify-content:center;margin-top:4px">
-      <button class="btn" id="dmore">${DASH_FULL?'Show less':'Show more detail'}</button>
-    </div></div>`;
+    <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div></div>`;
   wireCharts(w.body); wireClock(w.body);
-  const es=w.body.querySelector('#descal'); if(es)es.onclick=exportEscalation;
-  const sn=w.body.querySelector('#dsnap'); if(sn)sn.onclick=takeSnapshot;
   w.body.querySelectorAll('.rctbl tr[data-go]').forEach(tr=>{
     tr.style.cursor='pointer';
     tr.onclick=()=>{ const r=AB.find(x=>x.id===+tr.dataset.go);
       if(r){ openRegister(); setTimeout(()=>{ const i=GRID.rows.findIndex(x=>x.id===r.id);
         if(i>=0){ GRID.cur={r:i,c:0}; paintSel(); } },250); } };});
-  const mb=w.body.querySelector('#dmore');
-  if(mb)mb.onclick=()=>{ DASH_FULL=!DASH_FULL;
-    try{ localStorage.setItem('lod-dashfull', DASH_FULL?'1':''); }catch(e){}
-    renderDash(); };
 }
 function refresh(){ if(GRID&&GRID.win&&WINS.has(GRID.win.id))renderGrid(); renderDash(); renderDock();
   refreshHistory();
