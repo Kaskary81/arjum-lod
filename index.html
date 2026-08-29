@@ -989,6 +989,17 @@ table.rctbl td.bad{color:#d64545;font-weight:700}
 table.rctbl tr.hot td{background:rgba(214,69,69,.08)}
 table.rctbl tr.tot td{border-top:2px solid var(--ring);border-bottom:none}
 table.rctbl tr[data-go]:hover td{background:var(--chip)}
+
+/* the leg switch, on the register and the dashboard */
+.legbar{display:flex;gap:8px;padding:10px 10px 0;flex:none;flex-wrap:wrap}
+.legtab{flex:1;min-width:150px;text-align:left;border:1px solid var(--ring);border-radius:11px;
+  background:var(--surface2);padding:8px 12px;cursor:pointer;transition:.18s;font:inherit;color:var(--ink2)}
+.legtab:hover{border-color:var(--line2,#3f2d67)}
+.legtab b{display:block;font-size:13px;color:var(--ink)}
+.legtab span{font-size:11px;color:var(--muted)}
+.legtab.on{border-color:var(--accent);background:linear-gradient(180deg,var(--accent-soft),transparent);
+  box-shadow:0 0 0 3px rgba(168,85,247,.14)}
+.legtab.on b{color:#e9d5ff}
 </style>
 </head>
 <body>
@@ -1112,7 +1123,19 @@ const COLS=[
   {k:'plannedDate',  t:'Planned',      w:100, date:1},
   {k:'issuedDate',   t:'Issued',       w:100, ro:1, cls:'mono'},
   {k:'respondedDate',t:'Responded',    w:100, ro:1, cls:'mono'},
-  {k:'remark',       t:'Remark',       w:250}
+  {k:'remark',       t:'Remark',       w:250},
+  /* HESCO → AWPT */
+  {k:'hRev',  t:'HESCO rev',   w:88,  ro:1, cls:'ctr mono', leg:'hesco', calc:r=>legRev(r,'HESCO')},
+  {k:'hSent', t:'Sent to AWPT',w:112, ro:1, cls:'mono',     leg:'hesco', calc:r=>legSent(r,'HESCO')},
+  {k:'hBack', t:'AWPT replied',w:112, ro:1, cls:'mono',     leg:'hesco', calc:r=>legReplied(r,'HESCO')},
+  {k:'hOut',  t:'AWPT outcome',w:140, ro:1, cls:'ctr',      leg:'hesco', calc:r=>legState(r,'HESCO')},
+  {k:'hN',    t:'Cycles',      w:70,  ro:1, cls:'num',      leg:'hesco', calc:r=>legCycles(r,'HESCO').length||''},
+  /* AWPT → Maaden */
+  {k:'mRev',  t:'Maaden rev',  w:92,  ro:1, cls:'ctr mono', leg:'maaden', calc:r=>legRev(r,'Maaden')},
+  {k:'mSent', t:'Sent to Maaden',w:118,ro:1, cls:'mono',    leg:'maaden', calc:r=>legSent(r,'Maaden')},
+  {k:'mBack', t:'Maaden replied',w:118,ro:1, cls:'mono',    leg:'maaden', calc:r=>legReplied(r,'Maaden')},
+  {k:'mOut',  t:'Maaden code',  w:140, ro:1, cls:'ctr',     leg:'maaden', calc:r=>legState(r,'Maaden')},
+  {k:'mN',    t:'Cycles',       w:70,  ro:1, cls:'num',     leg:'maaden', calc:r=>legCycles(r,'Maaden').length||''}
 ];
 const COLBY=Object.fromEntries(COLS.map(c=>[c.k,c]));
 
@@ -1129,7 +1152,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v39';
+const BUILD='LOD 2026-08-29 · v40';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1271,7 +1294,15 @@ async function setCell(row,k,val,silent){
 }
 
 /* ---------------- column prefs ---------------- */
-function visCols(){ return PREFS.order.map(k=>COLBY[k]).filter(c=>c&&!PREFS.hidden.includes(c.k)); }
+function visCols(){
+  const base=PREFS.order.map(k=>COLBY[k]).filter(c=>c&&!PREFS.hidden.includes(c.k));
+  const legCols=COLS.filter(c=>c.leg===LEG);
+  if(LEG==='all')return base.filter(c=>!c.leg);
+  /* on a leg, drop the columns that belong to the other one and the
+     derived overall dates, then append this leg's own */
+  const drop=['issuedDate','respondedDate','credit','reviewDays'];
+  return base.filter(c=>!c.leg&&!drop.includes(c.k)).concat(legCols);
+}
 function colW(c){ return PREFS.w[c.k]||c.w; }
 let _prefTimer=null;
 function currentPrefs(){
@@ -1431,9 +1462,17 @@ function openRegister(){
   renderGrid();
   return w;
 }
+function legRows(list){
+  if(LEG==='hesco')
+    /* everything HESCO still owes or has in the AWPT loop, plus anything with a cycle */
+    return list.filter(r=>legCycles(r,'HESCO').length || r.status==='Not issued');
+  if(LEG==='maaden')
+    return list.filter(r=>legCycles(r,'Maaden').length || r.holder==='Maaden');
+  return list;
+}
 function gridRows(){
   const q=GRID.q.toLowerCase();
-  let rows=AB.filter(r=>{
+  let rows=legRows(AB).filter(r=>{
     if(q&&!((r.ref||'')+' '+(r.title||'')).toLowerCase().includes(q))return false;
     if(GRID.fd&&r.discipline!==GRID.fd)return false;
     if(GRID.fs&&r.status!==GRID.fs)return false;
@@ -1463,6 +1502,28 @@ function statusPill(v){
   const k=v||'Not issued';
   return `<span class="pill" style="background:${COLOR[k]}22;color:${COLOR[k]}">${esc(k)}</span>`;
 }
+/* ============================================================
+   The two legs. HESCO → AWPT is the internal loop; AWPT → Maaden
+   is the Client submission. A document lives on both, so the
+   register can be read one leg at a time.
+   ============================================================ */
+let LEG='all';
+const legCycles=(r,leg)=>(HIST[r.id]||[]).filter(h=>h.leg===leg)
+  .sort((a,b)=>(a.submitted||'')<(b.submitted||'')?-1:1);
+const lastCycle=(r,leg)=>{const c=legCycles(r,leg);return c.length?c[c.length-1]:null;};
+const legSent   =(r,leg)=>{const c=lastCycle(r,leg);return c?(c.submitted||''):'';};
+const legReplied=(r,leg)=>{const c=lastCycle(r,leg);return c?(c.responded||''):'';};
+const legRev    =(r,leg)=>{const c=lastCycle(r,leg);return c?(c.rev||''):'';};
+const legOutcome=(r,leg)=>{const c=lastCycle(r,leg);
+  if(!c)return '';
+  if(c.status)return c.status;
+  return c.submitted&&!c.responded?'Awaiting reply':'';};
+function legState(r,leg){
+  const c=lastCycle(r,leg);
+  if(!c)return 'Not started';
+  if(!c.responded)return 'Awaiting reply';
+  return c.status||'Replied';
+}
 function cellText(r,c){
   const v=c.calc?c.calc(r):(r[c.k]??'');
   if(c.pill)return statusPill(v);
@@ -1474,7 +1535,13 @@ function renderGrid(){
   const w=GRID.win; if(!w)return;
   const rows=gridRows(); GRID.rows=rows;
   const cs=visCols();
-  const tools=`<div class="wtools">
+  const legbar=`<div class="legbar">
+    ${[['all','Everything','all 148 documents'],
+       ['hesco','HESCO → AWPT','the internal review loop'],
+       ['maaden','AWPT → Maaden','what has gone to the Client']]
+      .map(([k,t,sub])=>`<button class="legtab${LEG===k?' on':''}" data-leg="${k}">
+        <b>${t}</b><span>${sub}</span></button>`).join('')}</div>`;
+  const tools=legbar+`<div class="wtools">
     <input class="f" id="gq" placeholder="Search document, discipline or action" style="min-width:210px;flex:1" value="${esc(GRID.q)}">
     <button class="btn${PREFS.wrap?' on':''}" id="gwrapbtn" title="Show the full text of every cell">
       ${PREFS.wrap?'↵ Wrapped':'↵ Wrap text'}</button>
@@ -1527,6 +1594,8 @@ function wireGrid(){
   $('gfs').onchange=e=>{GRID.fs=e.target.value;GRID.fage=null;GRID.fageL='';renderGrid();};
   $('gfh').onchange=e=>{GRID.fh=e.target.value;GRID.fage=null;GRID.fageL='';renderGrid();};
   $('gfx').onchange=e=>{GRID.fx=e.target.value;GRID.fage=null;GRID.fageL='';renderGrid();};
+  document.querySelectorAll('[data-leg]').forEach(b=>b.onclick=()=>{
+    LEG=b.dataset.leg; GRID.cur={r:0,c:0}; renderGrid(); renderDash(); });
   const wb=$('gwrapbtn');
   if(wb)wb.onclick=()=>{ PREFS.wrap=!PREFS.wrap; savePrefs(); renderGrid(); };
   $('gadd').onclick=addRow;
@@ -2921,6 +2990,24 @@ function kpiHTML(){
   const tile=(k,v,p,col,f)=>`<div class="kpi"><div class="k">${k}</div><div class="v">${v}</div>
     <div class="p">${p}</div><div class="bar"><i style="width:${f}%;background:${col}"></i></div></div>`;
   /* four by default — the scope and issued splits are detail, not headline */
+  if(LEG==='hesco'){
+    const n=AB.length, sub=s.subAwpt, ans=AB.filter(r=>legReplied(r,'HESCO')).length,
+          wait=AB.filter(r=>legSent(r,'HESCO')&&!legReplied(r,'HESCO')).length;
+    return tile('Submitted to AWPT',pc(sub)+'%',sub+' of '+n+' issued by HESCO','#2a78d6',pc(sub))+
+      tile('AWPT has answered',pc(ans)+'%',ans+' of '+n+' reviewed','#7c5cd6',pc(ans))+
+      tile('Awaiting AWPT',wait,'sent, no reply yet','#f0b429',pc(wait))+
+      tile('Still with HESCO',s.hesco,'to produce or resubmit','#d64545',pc(s.hesco))+
+      tile('Never submitted',s.notIssued,'no cycle at all','#8c9aa8',pc(s.notIssued));
+  }
+  if(LEG==='maaden'){
+    const n=AB.length, sent=s.okAwpt, ok=s.okMaaden,
+          wait=AB.filter(r=>legSent(r,'Maaden')&&!legReplied(r,'Maaden')).length;
+    return tile('Sent to Maaden',pc(sent)+'%',sent+' of '+n+' submitted to the Client','#2a78d6',pc(sent))+
+      tile('Approved by Maaden',pc(ok)+'%',ok+' Code A, Code B or deemed','#0f9d58',pc(ok))+
+      tile('Under Client review',wait,'sent, no reply yet','#f0b429',pc(wait))+
+      tile('Never sent to Maaden',n-sent,'still inside AWPT/HESCO','#d64545',pc(n-sent))+
+      tile('Closed',s.closed,'approved, no action','#0f9d58',pc(s.closed));
+  }
   const core =
     tile('Overall progress',s.pct+'%',s.scored+' documents scored','var(--accent)',s.pct)+
     tile('Submitted to AWPT', pc(s.subAwpt)+'%',
@@ -3235,13 +3322,21 @@ function renderDash(){
   /* The five headline figures, the recovery plan against what has actually
      been submitted, who is holding what, and the discipline split. Nothing
      after that — it was more than anyone reads in a morning. */
-  w.body.innerHTML=`<div class="dash">
+  const legbar=`<div class="legbar">
+    ${[['all','Everything','both legs'],
+       ['hesco','HESCO → AWPT','the internal review loop'],
+       ['maaden','AWPT → Maaden','what has gone to the Client']]
+      .map(([k,t,sub])=>`<button class="legtab${LEG===k?' on':''}" data-leg="${k}">
+        <b>${t}</b><span>${sub}</span></button>`).join('')}</div>`;
+  w.body.innerHTML=legbar+`<div class="dash">
     <div class="kpis">${kpiHTML()}</div>
     <div class="panel"><h3>Recovery plan — committed against submitted</h3>
       ${recoveryHTML()}</div>
     <div class="panel"><h3>Ball in court</h3>${ballChart()}</div>
     <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div></div>`;
   wireCharts(w.body); wireClock(w.body);
+  w.body.querySelectorAll('[data-leg]').forEach(b=>b.onclick=()=>{
+    LEG=b.dataset.leg; renderDash(); if(GRID&&GRID.win&&WINS.has(GRID.win.id))renderGrid(); });
   w.body.querySelectorAll('.rctbl tr[data-go]').forEach(tr=>{
     tr.style.cursor='pointer';
     tr.onclick=()=>{ const r=AB.find(x=>x.id===+tr.dataset.go);
