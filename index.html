@@ -1115,7 +1115,7 @@ const COLOR={'Code A':'#0f9d58','Deemed':'#4bb07a','Code B':'#6fc38a','Under rev
 /* Each leg has its own answer vocabulary. The document's overall status is
    written in AWPT's terms, so on a leg register the Status column shows THAT
    leg's own outcome instead — the Maaden register reads Maaden's codes. */
-const LEGSTATUSES={hesco:['RNC','RWC','Awaiting reply','Not submitted'],
+const LEGSTATUSES={hesco:['RNC','RWC','Replied','Awaiting reply','Not submitted'],
   maaden:['Code A','Code B','Rejected','Replied','Under Client review','Not submitted']};
 /* Maaden grades A / C / R / I on their review stamp — there is no "B" in the
    Client's scheme, so what the workbook calls Code B is their C. The stored
@@ -1213,7 +1213,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v51';
+const BUILD='LOD 2026-08-29 · v54';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1596,10 +1596,11 @@ function gridRows(){
   });
   return rows;
 }
-function statusPill(v,label){
+function statusPill(v,label,title){
   const k=v||'Not issued';
   const col=COLOR[k]||LCOLOR[k]||'#8c9aa8';
-  return `<span class="pill" style="background:${col}22;color:${col}">${esc(label||k)}</span>`;
+  return `<span class="pill"${title?' title="'+esc(title)+'"':''
+    } style="background:${col}22;color:${col}">${esc(label||k)}</span>`;
 }
 /* ============================================================
    The two legs. HESCO → AWPT is the internal loop; AWPT → Maaden
@@ -1630,7 +1631,12 @@ function legState(r,leg){
 }
 function cellText(r,c){
   const v=c.calc?c.calc(r):(r[c.k]??'');
-  if(c.pill)return statusPill(v, c.k==='mOut'?maadenLabel(v):null);
+  if(c.pill){
+    if(c.k==='hOut'&&isInferred(lastCycle(r,'HESCO')))
+      return statusPill(v, v+' ~',
+        'Worked out from the resubmission pattern, not recorded — this is an AWPT-only document, so no Client submission can evidence a clearance');
+    return statusPill(v, c.k==='mOut'?maadenLabel(v):null);
+  }
   if(c.k==='title'&&CCOUNT[r.id])
     return esc(v)+'<span class="cbadge" title="'+CCOUNT[r.id]+' comment(s)">'+CCOUNT[r.id]+'</span>';
   return esc(v);
@@ -3492,6 +3498,7 @@ function niceDate(d){
 const LEGSTATE=leg=>leg==='hesco'
   ? [{k:'RNC',           t:'Cleared by AWPT',  s:'reviewed with no comments',        c:'#0f9d58'},
      {k:'RWC',           t:'Back with HESCO',  s:'returned with comments to resolve',c:'#d64545'},
+     {k:'Replied',       t:'Reviewed',         s:'answered, no code — AWPT-only',    c:'#6b7f92'},
      {k:'Awaiting reply',t:'With AWPT now',    s:'submitted, awaiting the review',   c:'#f0b429'},
      {k:'Not submitted', t:'Never submitted',  s:'no cycle to AWPT at all',          c:'#8c9aa8'}]
   : [{k:'Code A',   t:'A — Accepted',              s:'accepted',                          c:'#0f9d58'},
@@ -3501,6 +3508,11 @@ const LEGSTATE=leg=>leg==='hesco'
      {k:'Under Client review',t:'With Maaden now',  s:'sent, awaiting the grade',          c:'#f0b429'},
      {k:'Not submitted',      t:'Not submitted',    s:'the Client has not seen it',        c:'#cbd2d8'}];
 const legOf=(r,leg)=>legState(r,leg==='hesco'?'HESCO':'Maaden');
+/* AWPT-only documents never reach the Client, so nothing evidences a clearance:
+   their verdict is inferred from whether HESCO resubmitted (about 77% right on
+   the cycles the Client's submissions do grade). Never show it as a plain fact. */
+const INFERRED='inferred from resubmission';
+const isInferred=c=>!!(c&&(c.source||'')===INFERRED);
 /* whole percentages that total exactly 100 — largest remainder, so a card row
    never reads 99% or 101% */
 function pct100(ns){
@@ -4806,7 +4818,8 @@ function historyHTML(r){
           <div class="hmid">
             <div class="hdates"><b>${esc(x.submitted)||'—'}</b><span>→</span>
               <b>${x.responded?esc(x.responded):'<span class="hint">awaiting</span>'}</b></div>
-            ${x.status?`<span class="pstate st-due">${esc(x.status)}</span>`:''}
+            ${x.status?`<span class="pstate st-due">${esc(x.status)}${
+              isInferred(x)?' ~':''}</span>`:''}
           </div>
           <div class="hdays ${out?'out':''}">${x.days!=null?x.days+'d'
             :(out?days(x.submitted,today)+'d':'—')}<i>${out?'so far':'days'}</i></div>
@@ -4819,7 +4832,9 @@ function historyHTML(r){
         <td class="mono">${esc(x.rev)}</td>
         <td class="mono">${esc(x.submitted)||'—'}</td>
         <td class="mono">${esc(x.responded)||'<span class="hint">awaiting</span>'}</td>
-        <td>${x.status?esc(x.status):'<span class="hint">—</span>'}</td>
+        <td>${x.status?esc(x.status)+(isInferred(x)?
+          ' <span class="hint" title="Worked out from the resubmission pattern, not recorded">~ inferred</span>':'')
+          :'<span class="hint">—</span>'}</td>
         <td style="text-align:right" class="mono">${x.days!=null?x.days:
           (x.submitted&&!x.responded?days(x.submitted,today)+'<span class="hint">+</span>':'—')}</td>
       </tr>`).join('')}</tbody></table></div>`;};
