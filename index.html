@@ -1131,7 +1131,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v36';
+const BUILD='LOD 2026-08-29 · v37';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -3232,16 +3232,15 @@ function renderDash(){
     <div class="panel"><h3>Needs attention</h3>${attentionHTML()}</div>` : '';
 
   w.body.innerHTML=`<div class="dash">
+    <div class="kpis">${kpiHTML()}</div>
     <div class="panel"><h3>Recovery plan — committed against submitted</h3>
       ${recoveryHTML()}</div>
-    ${DASH_FULL?`
-    <div class="kpis">${kpiHTML()}</div>
     <div class="panel"><h3>Ball in court</h3>${ballChart()}</div>
     <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div>
     <div class="panel"><h3>Past the review window</h3>${clockHTML()}
       <div class="planbar" style="margin-top:10px">
         <button class="btn" id="descal">Export the overdue list</button></div></div>
-    <div class="panel"><h3>Past their planned submission date</h3>${overdueHTML(12)}</div>`:''}
+    <div class="panel"><h3>Past their planned submission date</h3>${overdueHTML(12)}</div>
     ${more}
     <div class="planbar" style="justify-content:center;margin-top:4px">
       <button class="btn" id="dmore">${DASH_FULL?'Show less':'Show more detail'}</button>
