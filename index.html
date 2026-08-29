@@ -1247,7 +1247,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v57';
+const BUILD='LOD 2026-08-30 · v58';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -3563,7 +3563,10 @@ function recovState(it){
   return {k: it.plannedDate<today?'overdue':'due', sent:'', doc:d};
 }
 function recoveryHTML(){
-  if(!RECOV.loaded){ loadRecovery().then(renderDash); return '<div class="empty">Reading the plan…</div>'; }
+  if(!RECOV.loaded){
+    /* redraw whichever screen asked for it, not just the desktop one */
+    loadRecovery().then(()=>{ MOBILE?mobRender():renderDash(); });
+    return '<div class="empty">Reading the plan…</div>'; }
   const items=RECOV.items;
   if(!items.length)
     return '<div class="empty">No recovery plan loaded. Create a submission plan named '+
@@ -4025,35 +4028,37 @@ function mobRender(){
   const V={dash:mobDash,reg:mobList,one:mobOne,late:mobLate,more:mobMore,plan:mobPlan};
   document.getElementById('mbody').innerHTML=(V[MOB.view]||mobDash)();
   wireMob(); wireCharts(document.getElementById('mbody'));
+  const mb=document.getElementById('mbody');
+  if(mb){
+    mb.querySelectorAll('[data-leg]').forEach(b=>b.onclick=()=>{
+      LEG=b.dataset.leg; mobRender(); });
+    mb.querySelectorAll('.rctbl tr[data-go]').forEach(tr=>{
+      tr.style.cursor='pointer';
+      tr.onclick=()=>{ MOB.view='one'; MOB.id=+tr.dataset.go; mobRender(); };});
+  }
   wireClock(document.getElementById('mbody')); updateBell();
 }
 const offBar=()=>LIVE?'':`<div class="offbar"><b>Saved snapshot.</b> This copy cannot reach the
   database, so the figures are as at 14 Aug 2026 and editing is off.</div>`;
 function mobDash(){
-  const s=withLeg('all',stats);
-  const t=(k,v,p,c,f)=>`<div class="kpi"><div class="k">${k}</div><div class="v">${v}</div>
-    <div class="p">${p}</div><div class="bar"><i style="width:${f}%;background:${c}"></i></div></div>`;
-  return offBar()+`<div class="mkpi">
-      ${t('Progress',s.pct+'%',s.scored+' scored','var(--accent)',s.pct)}
-      ${t('Base',s.basePct+'%',s.baseN+' docs','#0f9d58',s.basePct)}
-      ${t('Optional',s.optPct+'%',s.optN+' docs','#f0b429',s.optPct)}
-      ${t('Issued · base',(s.baseN?Math.round(s.issuedBase/s.baseN*100):0)+'%',
-          s.issuedBase+' of '+s.baseN,'#2a78d6',s.baseN?s.issuedBase/s.baseN*100:0)}
-      ${t('Issued · optional',(s.optN?Math.round(s.issuedOpt/s.optN*100):0)+'%',
-          s.issuedOpt+' of '+s.optN,'#7c5cd6',s.optN?s.issuedOpt/s.optN*100:0)}
-      ${t('Open',s.open,'of '+s.t,'#8c9aa8',Math.round(s.open/s.t*100))}
-      ${t('With HESCO',s.hesco,'to act','#d64545',Math.round(s.hesco/s.t*100))}
-      ${t('With AWPT',s.awpt,'to review','#f0b429',Math.round(s.awpt/s.t*100))}
-      ${t("With Maaden",s.maaden,'client','#2a78d6',Math.round(s.maaden/s.t*100))}
-      ${t('Closed',s.closed,'no action','#0f9d58',Math.round(s.closed/s.t*100))}</div>
-    <div class="panel"><h3>Ball in court</h3>${ballChart()}</div>
-    <div class="panel"><h3>Where the credit sits</h3>${creditChart()}</div>
-    <div class="panel"><h3>Issued from HESCO to AWPT</h3>${issuedChart()}</div>
-    <div class="panel"><h3>Progress by review class</h3>${classChart()}</div>
-    <div class="panel"><h3>Held longest</h3>${ageingChart()}</div>
-    <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div>
-    <div class="panel"><h3>Needs attention</h3>${attentionHTML()}</div>`;
+  /* The phone shows the same dashboard as the desktop — the same leg switch,
+     the same five figures, the same three sections. It had been left behind on
+     an older layout of ten tiles and seven panels, which meant the two devices
+     told different stories about the same project. */
+  const legbar=`<div class="legbar">
+    ${[['all','Everything','both legs'],
+       ['hesco','HESCO → AWPT','internal review'],
+       ['maaden','AWPT → Maaden','to the Client']]
+      .map(([k,t,sub])=>`<button class="legtab${LEG===k?' on':''}" data-leg="${k}">
+        <b>${t}</b><span>${sub}</span></button>`).join('')}</div>`;
+  return offBar()+legbar+
+    `<div class="mkpi">${kpiHTML()}</div>
+     <div class="panel"><h3>Recovery plan — committed against submitted</h3>
+       ${recoveryHTML()}</div>
+     <div class="panel"><h3>Ball in court</h3>${ballChart()}</div>
+     <div class="panel"><h3>By discipline</h3>${disciplineChart()}</div>`;
 }
+
 function mobFilters(){
   const F=[['','All',()=>AB.length],
     ['open','Open',()=>AB.filter(isOpen).length],
