@@ -1162,7 +1162,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v43';
+const BUILD='LOD 2026-08-29 · v44';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -3183,27 +3183,42 @@ function disciplineChart(){
     .sort((a,b)=>b.n-a.n);
   if(!ds.length)return '<div class="empty">No disciplines recorded.</div>';
   const max=ds[0].n;
+  /* Segmented by who holds the document, using the same four colours as Ball in
+     court — so the AWPT slice of every discipline adds up to the AWPT figure
+     there. Status wording is kept out of this chart on purpose: "Under review"
+     means with Maaden and "Under AWPT review" means with AWPT, and having both
+     on one bar invited exactly the confusion it caused. */
+  const HOLD=['HESCO','AWPT','Maaden','Closed'];
   return `<div class="chart dbars" data-chart="disc">${ds.map(x=>{
-    const parts=STATUSES.map(k=>({k,v:SET.filter(r=>r.discipline===x.d&&r.status===k).length})).filter(p=>p.v);
+    const parts=HOLD.map(h=>({h,v:SET.filter(r=>r.discipline===x.d&&r.holder===h).length}))
+      .filter(p=>p.v);
     return `<div class="drow"><div class="dlab" title="${esc(x.d)}">${esc(x.d)}</div>
       <div class="dtrack"><div class="dbar" style="width:${x.n/max*100}%">${parts.map(p=>
-        `<i data-d="${esc(x.d)}" data-k="${esc(p.k)}" data-v="${p.v}" style="flex:${p.v};background:${COLOR[p.k]}"></i>`).join('')}</div></div>
+        `<i data-d="${esc(x.d)}" data-h="${esc(p.h)}"
+            title="${esc(x.d)} — ${p.v} with ${esc(p.h)}"
+            style="flex:${p.v};background:${HCOLOR[p.h]}"></i>`).join('')}</div></div>
       <div class="dn">${x.n}</div><div class="dp">${x.pct}%</div></div>`;}).join('')}
-    <div class="legend">${STATUSES.map(k=>
-      `<span><i class="sw" style="background:${COLOR[k]}"></i>${esc(k)}</span>`).join('')}
-      <span class="rt">progress</span></div></div>`;
+    <div class="balllg" style="margin-top:10px">${HOLD.map(h=>
+      `<button class="blg" data-h="${esc(h)}"><i style="background:${HCOLOR[h]}"></i>
+        <span>${esc(h)}</span><b>${SET.filter(r=>r.holder===h).length}</b></button>`).join('')}</div>
+    <div class="hint" style="margin-top:6px">Split by who must act next, so each
+      discipline adds up to the same totals as Ball in court.</div>`;
 }
+
 function wireDisc(root){
   const box=root.querySelector('[data-chart="disc"]'); if(!box)return;
   box.querySelectorAll('.dbar i').forEach(seg=>{
     seg.style.cursor='pointer';
     seg.addEventListener('pointerenter',e=>{
       box.classList.add('focus'); seg.classList.add('on');
-      showTip(`<b>${esc(seg.dataset.d)}</b><div class="tl"><span>${esc(seg.dataset.k)}</span>
-        <b>${seg.dataset.v}</b></div><div class="th">tap to filter</div>`,e.clientX,e.clientY);});
+      showTip(`<b>${esc(seg.dataset.d)}</b><div class="tl">
+        <span>with ${esc(seg.dataset.h||seg.dataset.k)}</span></div>
+        <div class="th">tap to filter</div>`,e.clientX,e.clientY);});
     seg.addEventListener('pointermove',moveTip);
     seg.addEventListener('pointerleave',()=>{hideTip();box.classList.remove('focus');seg.classList.remove('on');});
-    seg.addEventListener('click',()=>drillTo({fd:seg.dataset.d,fs:seg.dataset.k}));});
+    seg.addEventListener('click',()=>seg.dataset.h
+      ? drillTo({fd:seg.dataset.d, fh:seg.dataset.h})    /* by holder now */
+      : drillTo({fd:seg.dataset.d, fs:seg.dataset.k}));});
 }
 function throughputChart(){ return ballChart(); }
 function wireThr(root){ wireBall(root); }
