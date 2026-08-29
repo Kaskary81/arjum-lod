@@ -1129,7 +1129,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-29 · v38';
+const BUILD='LOD 2026-08-29 · v39';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2881,6 +2881,10 @@ function heldDays(r){
   return (r.daysHeld==null||r.daysHeld==='')?null:+r.daysHeld;
 }
 const inBase=r=>r.inProgressBase!==false;
+function hasCycle(r,leg){
+  const h=HIST[r.id]||[];          /* HIST is the live history; REVS is legacy */
+  return h.some(x=>x.leg===leg && (x.submitted||'').trim()!=='');
+}
 function stats(){
   const base=AB.filter(inBase);
   const avg=list=>list.length?list.reduce((t,r)=>t+creditOf(r),0)/list.length:0;
@@ -2901,7 +2905,15 @@ function stats(){
     approved:AB.filter(r=>APPROVED.includes(r.status)).length,
     review:AB.filter(r=>r.status==='Under review').length,
     rejected:AB.filter(r=>r.status==='Rejected').length,
-    notIssued:AB.filter(r=>r.status==='Not issued').length
+    notIssued:AB.filter(r=>r.status==='Not issued').length,
+    /* The three gates a document passes through. Each is counted from the
+       submission history, not from the current status, so a document that has
+       moved on still counts as having passed the gate behind it. */
+    subAwpt: AB.filter(r=>hasCycle(r,'HESCO')).length,
+    okAwpt:  AB.filter(r=>hasCycle(r,'Maaden')).length,
+    okMaaden:AB.filter(r=>((HIST[r.id]||[]).some(h=>h.leg==='Maaden'
+                && (h.status==='Code A'||h.status==='Code B')))
+                || r.status==='Deemed').length
   };
 }
 function kpiHTML(){
@@ -2911,6 +2923,12 @@ function kpiHTML(){
   /* four by default — the scope and issued splits are detail, not headline */
   const core =
     tile('Overall progress',s.pct+'%',s.scored+' documents scored','var(--accent)',s.pct)+
+    tile('Submitted to AWPT', pc(s.subAwpt)+'%',
+      s.subAwpt+' of '+s.t+' issued by HESCO','#2a78d6', pc(s.subAwpt))+
+    tile('Approved by AWPT', pc(s.okAwpt)+'%',
+      s.okAwpt+' of '+s.t+' cleared onward to Maaden','#7c5cd6', pc(s.okAwpt))+
+    tile("Approved by Maaden", pc(s.okMaaden)+'%',
+      s.okMaaden+' of '+s.t+' Code A, Code B or deemed','#0f9d58', pc(s.okMaaden))+
     tile('With HESCO',s.hesco,'to produce or resubmit','#d64545',pc(s.hesco))+
     tile('With AWPT',s.awpt,'to review and issue','#f0b429',pc(s.awpt))+
     tile("With Maaden",s.maaden,'awaiting the Client','#2a78d6',pc(s.maaden))+
