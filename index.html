@@ -1247,7 +1247,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-30 · v61';
+const BUILD='LOD 2026-08-31 · v62';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1600,9 +1600,9 @@ function renderAllGrids(){
   if(keep&&keep.win&&WINS.has(keep.win.id))GRID=keep;
 }
 const REGMETA={
-  all   :['reg',        'Register',                 'all 148 documents'],
-  hesco :['reg-hesco',  'Register · HESCO → AWPT',  '148 submittals to AWPT'],
-  maaden:['reg-maaden', 'Register · AWPT → Maaden', '130 submittals in Client scope']};
+  all   :['reg',        'Register',                 'every document'],
+  hesco :['reg-hesco',  'Register · HESCO → AWPT',  'submittals to AWPT'],
+  maaden:['reg-maaden', 'Register · AWPT → Maaden', 'submittals in Client scope']};
 function openRegister(leg){
   const m=REGMETA[leg||'all']||REGMETA.all;
   const w=createWindow(m[0],m[1],m[2]);
@@ -1622,6 +1622,7 @@ const DOCS=()=>legRows(AB);   /* the documents the chosen leg is about */
 const isClientScope=r=>(r.reviewClass||'')!=='AWPT-only';
 const CLIENT=()=>LEGOK?AB.filter(r=>LEGM[r.id]):AB.filter(isClientScope);
 function withLeg(leg,fn){ const k=LEG; LEG=leg; try{ return fn(); } finally{ LEG=k; } }
+const legCount=leg=>{ const k=LEG; LEG=leg; const n=legRows(AB).length; LEG=k; return n; };
 function legRows(list){
   if(LEG==='hesco')
     return LEGOK ? list.filter(r=>LEGA[r.id])
@@ -1768,15 +1769,15 @@ function renderGrid(g){
   const rows=gridRows(); GRID.rows=rows;
   const cs=visCols();
   const legbar=(w.kind==='reg')?`<div class="legbar">
-    ${[['all','Everything','all 148 documents'],
+    ${[['all','Everything','every document'],
        ['hesco','HESCO → AWPT','the internal review loop'],
        ['maaden','AWPT → Maaden','what has gone to the Client']]
       .map(([k,t,sub])=>`<button class="legtab${LEG===k?' on':''}" data-leg="${k}">
         <b>${t}</b><span>${sub}</span></button>`).join('')}</div>`
     :`<div class="legbar"><button class="legtab on" data-legfixed="1"><b>${
         LEG==='hesco'?'HESCO → AWPT':'AWPT → Maaden'}</b><span>${
-        LEG==='hesco'?'every LOD document — 148 submittals'
-                     :'Client scope only — 130 submittals'}</span></button>
+        (LEG==='hesco'?'every LOD document — ':'Client scope only — ')+
+        legRows(AB).length+' submittals'}</span></button>
       <button class="legtab" data-opendash="${LEG}"><b>◔ This leg's dashboard</b>
         <span>open it beside the register</span></button></div>`;
   const tools=legbar+`<div class="wtools">
@@ -3521,8 +3522,8 @@ function overdueHTML(limit){
 }
 const DASHMETA={
   all   :['dash',        'Dashboard',                 'design deliverables progress'],
-  hesco :['dash-hesco',  'Dashboard · HESCO → AWPT',  '148 submittals to AWPT'],
-  maaden:['dash-maaden', 'Dashboard · AWPT → Maaden', '130 submittals in Client scope']};
+  hesco :['dash-hesco',  'Dashboard · HESCO → AWPT',  'submittals to AWPT'],
+  maaden:['dash-maaden', 'Dashboard · AWPT → Maaden', 'submittals in Client scope']};
 function openDashboard(leg){
   const m=DASHMETA[leg||'all']||DASHMETA.all;
   const w=createWindow(m[0],m[1],m[2],null,null,980,660);
@@ -3741,7 +3742,8 @@ function legDashHTML(leg){
     ? `<div class="panel"><h3>Recovery plan — committed against submitted to AWPT</h3>
          ${recoveryHTML()}</div>` : '';
   return `<div class="dash">
-    <div class="panel"><h3>Where the ${leg==='hesco'?'148 submittals to AWPT':'130 Client submittals'} stand</h3>
+    <div class="panel"><h3>Where the ${legRows(AB).length} ${
+      leg==='hesco'?'submittals to AWPT':'Client submittals'} stand</h3>
       ${legCards(leg)}</div>
     ${plan}
     <div class="panel"><h3>How long ${leg==='hesco'?'AWPT':'Maaden'} takes to answer</h3>
@@ -3797,8 +3799,8 @@ function renderDashOne(w){
         <b>${t}</b><span>${sub}</span></button>`).join('')}</div>`
     :`<div class="legbar"><button class="legtab on"><b>${
         LEG==='hesco'?'HESCO → AWPT':'AWPT → Maaden'}</b><span>${
-        LEG==='hesco'?'every LOD document — 148 submittals'
-                     :'Client scope only — 130 submittals'}</span></button>
+        (LEG==='hesco'?'every LOD document — ':'Client scope only — ')+
+        legRows(AB).length+' submittals'}</span></button>
       <button class="legtab" data-openreg="${LEG}"><b>▦ This leg's register</b>
         <span>open it beside the dashboard</span></button></div>`;
   if(w.kind!=='dash'){
@@ -4063,8 +4065,8 @@ function mobDash(){
      phone always drew the Everything layout, so the leg cards never appeared. */
   const legbar=`<div class="legbar">
     ${[['all','Everything','both legs'],
-       ['hesco','HESCO → AWPT','148 submittals'],
-       ['maaden','AWPT → Maaden','130 Client submittals']]
+       ['hesco','HESCO → AWPT',legCount('hesco')+' submittals'],
+       ['maaden','AWPT → Maaden',legCount('maaden')+' Client submittals']]
       .map(([k,t,sub])=>`<button class="legtab${LEG===k?' on':''}" data-leg="${k}">
         <b>${t}</b><span>${sub}</span></button>`).join('')}</div>`;
   if(LEG==='hesco'||LEG==='maaden')
