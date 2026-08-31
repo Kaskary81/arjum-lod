@@ -575,7 +575,7 @@ body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent)
   #printroot .c-reviewClass{width:6%;text-align:center}
   #printroot .c-scope{width:6%;text-align:center}
   #printroot .c-status{width:9%;text-align:center}
-  #printroot .c-holder{width:8%;text-align:center}
+  #printroot .c-holder,#printroot .c-hCourt,#printroot .c-mCourt{width:8%;text-align:center}
   #printroot .c-plannedDate,#printroot .c-issuedDate,#printroot .c-respondedDate,
   #printroot .c-awptSubmitted,#printroot .c-hSent,#printroot .c-hBack,
   #printroot .c-mSent,#printroot .c-mBack{
@@ -636,6 +636,17 @@ body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent)
   table.rtbl .c-hDays,table.rtbl .c-mDays,table.rtbl .c-toClient{width:5%;text-align:center}
   table.rtbl .c-daysUR,table.rtbl .c-late{width:5%;text-align:right}
 
+  /* analysis report: section rules, group tables and the totals row */
+  .rsec{font-size:8.4pt;font-weight:700;color:#12304f;margin:9pt 0 4pt;
+    padding-bottom:2pt;border-bottom:.8pt solid #12304f;page-break-after:avoid}
+  .rsec:first-of-type{margin-top:4pt}
+  .rnote{font-size:7.4pt;color:#555;font-style:italic;padding:3pt 0}
+  table.rtbl .c-grp{width:26%}
+  table.rtbl .c-num{width:7%;text-align:center;font-variant-numeric:tabular-nums}
+  table.rtbl .c-pct{width:7%;text-align:center;font-weight:700;
+    font-variant-numeric:tabular-nums}
+  table.rtbl tr.rtot td{border-top:.8pt solid #12304f;font-weight:700;
+    background:#eef2f6!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .rfoot{margin-top:7pt;padding-top:3pt;border-top:.4pt solid #d9dee3;
     font-size:6.2pt;color:#777}
 }
@@ -1215,6 +1226,7 @@ const COLS=[
        const sent=t?(t.sent||''):legSent(r,'Maaden');
        if(rev)return rev;            /* the revision the Client last received */
        return sent?'sent':'—';       /* '—' = never submitted to Maaden */ }},
+  {k:'hCourt',t:'Ball in court',w:104, ro:1, cls:'ctr', leg:'hesco', calc:r=>legCourt(r,'hesco')},
   {k:'hN',    t:'Cycles',      w:70,  ro:1, cls:'num',      leg:'hesco',
      calc:r=>{const t=legRow(r,'hesco');return (t?t.cycles:legCycles(r,'HESCO').length)||'';}},
   /* AWPT → Maaden */
@@ -1227,6 +1239,7 @@ const COLS=[
        if(!c)return '';
        if(c.days!=null)return c.days;
        return c.submitted&&!c.responded?days(c.submitted,today)+'*':'';}},
+  {k:'mCourt',t:'Ball in court',w:104, ro:1, cls:'ctr', leg:'maaden', calc:r=>legCourt(r,'maaden')},
   {k:'mN',    t:'Cycles',       w:70,  ro:1, cls:'num',     leg:'maaden',
      calc:r=>{const t=legRow(r,'maaden');return (t?t.cycles:legCycles(r,'Maaden').length)||'';}}
 ];
@@ -1257,7 +1270,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-31 · v63';
+const BUILD='LOD 2026-08-31 · v67';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1413,11 +1426,12 @@ function visCols(){
      derived overall dates, then append this leg's own */
   const drop=['issuedDate','respondedDate','credit','reviewDays','rev'];
   const outK=LEG==='hesco'?'hOut':'mOut';
+  const courtK=LEG==='hesco'?'hCourt':'mCourt';
   /* the overall status is the AWPT loop's verdict — on a leg it is replaced,
      in the same position, by that leg's own answer */
   const keep=base.filter(c=>!c.leg&&!drop.includes(c.k))
-                 .map(c=>c.k==='status'?COLBY[outK]:c);
-  return keep.concat(legCols.filter(c=>c.k!==outK));
+                 .map(c=>c.k==='status'?COLBY[outK]:(c.k==='holder'?COLBY[courtK]:c));
+  return keep.concat(legCols.filter(c=>c.k!==outK&&c.k!==courtK));
 }
 function colW(c){ return PREFS.w[c.k]||c.w; }
 /* Move a column one place left or right along the row you can actually see,
@@ -1552,7 +1566,7 @@ function renderDock(){
 function dockStatus(){
   const s=withLeg('all',stats);
   return (LIVE?'● live':'● snapshot, read-only')+' · '+s.t+' documents · '+
-    s.sub+' submitted · '+s.ur+' under review'+(USER?' · '+esc(USER.name):'')+' · build '+BUILD;
+    s.subAwpt+' submitted to AWPT · '+s.review+' under Client review'+(USER?' · '+esc(USER.name):'')+' · build '+BUILD;
 }
 let _drag=null;
 function startDrag(e,w){
@@ -1651,11 +1665,16 @@ function gridRows(){
     if(GRID.fs){ const st=LEG==='all'?r.status
         :legState(r,LEG==='hesco'?'HESCO':'Maaden');
       if(st!==GRID.fs)return false; }
-    if(GRID.fh&&r.holder!==GRID.fh)return false;
-    if(GRID.fx==='open'&&!isOpen(r))return false;
-    if(GRID.fx==='ur'&&r.status!=='Under review')return false;
-    if(GRID.fx==='late'&&!(!APPROVED.includes(r.status)&&r.plannedDate&&r.plannedDate<today))return false;
-    if(GRID.fx==='ns'&&r.status!=='Not issued')return false;
+    if(GRID.fh){ const court=LEG==='all'?r.holder:legCourt(r,LEG);
+      if(court!==GRID.fh)return false; }
+    if(GRID.fx&&GRID.fx!=='win'){
+      if(LEG==='all'){
+        if(GRID.fx==='open'&&!isOpen(r))return false;
+        if(GRID.fx==='ur'&&r.status!=='Under review')return false;
+        if(GRID.fx==='late'&&!(!APPROVED.includes(r.status)&&r.plannedDate&&r.plannedDate<today))return false;
+        if(GRID.fx==='ns'&&r.status!=='Not issued')return false;
+      } else if(!legFx(r,LEG,GRID.fx))return false;
+    }
     if(GRID.fx==='win'){const c=reviewClock(r);if(!c||c.over<=0)return false;}
     if(GRID.fage){ const a=heldDays(r); if(a==null)return false;
       if(a<GRID.fage[0]||a>GRID.fage[1])return false; }
@@ -1801,15 +1820,11 @@ function renderGrid(g){
         `<option value="${esc(k)}"${GRID.fs===k?' selected':''}>${
           esc(LEG==='maaden'?maadenLabel(k):k)}</option>`).join('')}</select>
     <select class="f" id="gfh"><option value="">Anyone's court</option>${
-      HOLDERS.map(k=>`<option${GRID.fh===k?' selected':''}>${esc(k)}</option>`).join('')}</select>
-    <select class="f" id="gfx">
-      <option value="">Everything</option>
-      <option value="open"${GRID.fx==='open'?' selected':''}>Open only</option>
-      <option value="ur"${GRID.fx==='ur'?' selected':''}>Under review</option>
-      <option value="late"${GRID.fx==='late'?' selected':''}>Past target</option>
-      <option value="ns"${GRID.fx==='ns'?' selected':''}>Not issued</option>
-      <option value="win"${GRID.fx==='win'?' selected':''}>Past the review window</option>
-    </select>
+      (LEG==='all'?HOLDERS:legCourts(LEG)).map(k=>
+        `<option${GRID.fh===k?' selected':''}>${esc(k)}</option>`).join('')}</select>
+    <select class="f" id="gfx">${
+      (LEGFX[LEG]||LEGFX.all).map(([v,l])=>
+        `<option value="${v}"${GRID.fx===v?' selected':''}>${esc(l)}</option>`).join('')}</select>
     <button class="btn" id="gadd"${canEdit()?'':' disabled'}>Add document</button>
     <button class="btn" id="gdel"${canEdit()?'':' disabled'}>Delete selected</button>
     <button class="btn" id="gplan"${canEdit()?'':' disabled'}>Add to plan</button>
@@ -2568,6 +2583,8 @@ async function openPlans(){
         <button class="btn" id="pedit"${canEdit()&&current?'':' disabled'}>Edit week</button>
         <button class="btn" id="pdel"${canEdit()&&current?'':' disabled'}>Delete plan</button>
         <button class="btn" id="ppdf"${current?'':' disabled'}>Export PDF</button>
+        <button class="btn" id="panal"${plansOfKind(PLAN_KIND).length?'':' disabled'}
+          title="Every week in one report: week by week, by person, by discipline, and what is overdue">Analysis PDF</button>
         <span class="hint" id="pcount">${plan?`<span class="phase ph-${planPhase(plan).k}">${
           esc(planPhase(plan).label)}</span> <span class="phase ph-kind">${
           esc(planKindLabel(plan))}</span> · `:''}${items.length} document(s)</span>
@@ -2614,7 +2631,8 @@ async function openPlans(){
 }
 function wirePlan(draw){
   const w=[...WINS.values()].find(x=>x.kind==='plan'); if(!w)return;
-  const $=id=>w.body.querySelector('#'+id);
+  /* attribute selector, not '#id' — ids repeat across windows */
+  const $=id=>w.body.querySelector('[id="'+id+'"]');
   const sel=$('pweek');
   if(sel)sel.onchange=async()=>{ PLAN_CUR=+sel.value; await draw(); };
   if($('pnew'))$('pnew').onclick=()=>{
@@ -2659,6 +2677,7 @@ function wirePlan(draw){
     const it=(PITEMS[PLAN_CUR]||[]).find(x=>x.id===+el.dataset.pi);
     if(it)toast(assigneeName(it.assigneeId)+(it.plannedDate?' · due '+it.plannedDate:''));});
   if($('ppdf'))$('ppdf').onclick=()=>exportPlanPDF(PLAN_CUR);
+  if($('panal'))$('panal').onclick=()=>exportPlanAnalysisPDF(PLAN_KIND);
   if($('pedit'))$('pedit').onclick=()=>{
     const p=PLANS.find(x=>x.id===PLAN_CUR); if(!p)return;
     const opts=weekOptions(2,4);
@@ -2910,6 +2929,170 @@ function ganttHTML(planId){
       <span class="rt">Fridays shaded</span></div></div>`;
 }
 
+/* ================= overall plan analysis =================
+   One PDF covering EVERY week of the selected category, not a single week.
+   It answers the three questions a progress meeting actually asks: are we
+   keeping the commitments, who is behind, and what is overdue right now.
+   Every figure below is derived from itemState(), the same function the
+   screen uses, so paper and screen can never disagree. */
+
+/* one flat row per plan item, with the plan it belongs to */
+function planUniverse(kind){
+  const out=[];
+  for(const p of PLANS){
+    if((p.kind||'submission')!==kind)continue;
+    for(const it of (PITEMS[p.id]||[])){
+      const r=AB.find(a=>a.id===it.docId)||{};
+      out.push({it,plan:p,doc:r,st:itemState(it,p)});
+    }
+  }
+  return out;
+}
+/* count a set of rows into the five buckets the progress bar uses */
+function planTally(rows){
+  const k=f=>rows.filter(f).length;
+  const done=k(x=>x.st.k==='done'||x.st.k==='late');
+  const late=rows.filter(x=>x.st.k==='late');
+  /* how far past target the late ones landed, and how far past target the
+     still-open ones are today — the two halves of "slip" */
+  const slip=late.map(x=>days(x.it.plannedDate,x.st.sub)).filter(n=>n>0);
+  const overdue=rows.filter(x=>x.st.k==='overdue');
+  const age=overdue.map(x=>days(x.it.plannedDate,today)).filter(n=>n>0);
+  const avg=a=>a.length?Math.round(a.reduce((t,n)=>t+n,0)/a.length):0;
+  return {n:rows.length,done,onTime:k(x=>x.st.k==='done'),late:late.length,
+    overdue:overdue.length,open:k(x=>['due','nodate','pending'].includes(x.st.k)),
+    pct:rows.length?Math.round(done/rows.length*100):0,
+    avgSlip:avg(slip),worstSlip:slip.length?Math.max(...slip):0,
+    avgAge:avg(age),worstAge:age.length?Math.max(...age):0};
+}
+/* group rows by a key and tally each group, biggest problem first */
+function planGroup(rows,keyOf){
+  const m=new Map();
+  for(const x of rows){const k=keyOf(x)||'—';(m.get(k)||m.set(k,[]).get(k)).push(x);}
+  return [...m.entries()].map(([k,v])=>({k,t:planTally(v)}))
+    .sort((a,b)=>(b.t.overdue-a.t.overdue)||(b.t.late-a.t.late)||(b.t.n-a.t.n));
+}
+function buildPlanAnalysis(kind){
+  const rows=planUniverse(kind);
+  const T=planTally(rows);
+  const weeks=PLANS.filter(p=>(p.kind||'submission')===kind)
+    .slice().sort((a,b)=>a.weekStart<b.weekStart?-1:1);
+  const stamp=new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
+  const verb=kind==='review'?'answered':'submitted to AWPT';
+  const title=kind==='review'?'AWPT Review Plan':'HESCO Submission Plan';
+  const kpi=(l,v)=>`<div class="rk"><b>${v}</b><span>${l}</span></div>`;
+  const sec=t=>`<div class="rsec">${esc(t)}</div>`;
+  const pcell=t=>`<td class="c-pct">${t.pct}%</td>`;
+  const trow=(label,t,extra)=>`<tr><td class="c-grp">${esc(label)}</td>
+    <td class="c-num">${t.n}</td><td class="c-num">${t.done}</td>
+    <td class="c-num">${t.onTime}</td><td class="c-num">${t.late}</td>
+    <td class="c-num">${t.overdue}</td><td class="c-num">${t.open}</td>
+    ${pcell(t)}${extra||''}</tr>`;
+  const gh=extra=>`<thead><tr><th class="c-grp">${esc(extra?extra[0]:'')}</th>
+    <th class="c-num">Planned</th><th class="c-num">Done</th><th class="c-num">On time</th>
+    <th class="c-num">Late</th><th class="c-num">Overdue</th><th class="c-num">To come</th>
+    <th class="c-pct">%</th>${extra&&extra[1]?extra[1]:''}</tr></thead>`;
+
+  /* every item still open past its target date, worst first */
+  const slipping=rows.filter(x=>x.st.k==='overdue')
+    .sort((a,b)=>days(b.it.plannedDate,today)-days(a.it.plannedDate,today));
+  /* everything delivered after its target date, worst first */
+  const arrivedLate=rows.filter(x=>x.st.k==='late')
+    .sort((a,b)=>days(b.it.plannedDate,b.st.sub)-days(a.it.plannedDate,a.st.sub));
+
+  return `<div class="rhead">
+      <div class="rt"><h1>Taif Ar Rjum Package B — ${esc(title)} Analysis</h1>
+        <div class="rs">All weeks to date · Sub-Contract 111051/2026/0022</div></div>
+      <div class="rd">${stamp}<br><span>${weeks.length} week${weeks.length===1?'':'s'} · ${
+        T.n} planned item${T.n===1?'':'s'}</span></div></div>
+
+    <div class="rfilt"><b>Scope:</b> every ${kind==='review'?'review':'submission'} week on record${
+      weeks.length?', '+esc(weekLabel(weeks[0].weekStart))+' to '+esc(weekLabel(weeks[weeks.length-1].weekStart)):''
+      }. Progress is counted the moment the document is ${esc(verb)}; work already
+      done before a week was written is excluded from that week's score.</div>
+
+    <div class="rkpis">${
+      kpi('Planned',T.n)+kpi('Delivered',T.done)+kpi('Delivered',T.pct+'%')+
+      kpi('On time',T.onTime)+kpi('Late',T.late)+kpi('Overdue now',T.overdue)+
+      kpi('Still to come',T.open)+
+      kpi('Avg days late',T.avgSlip)+kpi('Longest overdue',T.worstAge+'d')}</div>
+
+    ${sec('1 · Week by week')}
+    <table class="rtbl">${gh(['Week','<th class="c-num">Avg late</th><th class="c-num">Worst</th>'])}
+      <tbody>${weeks.map(p=>{
+        const t=planTally(rows.filter(x=>x.plan.id===p.id));
+        return trow(weekLabel(p.weekStart)+(p.name?' · '+p.name:''),t,
+          `<td class="c-num">${t.avgSlip||'—'}</td><td class="c-num">${t.worstSlip||'—'}</td>`);
+      }).join('')}
+      <tr class="rtot">${trow('All weeks',T,
+        `<td class="c-num">${T.avgSlip||'—'}</td><td class="c-num">${T.worstSlip||'—'}</td>`)
+        .replace(/^<tr>|<\/tr>$/g,'')}</tr></tbody></table>
+
+    ${sec('2 · By responsible person')}
+    <table class="rtbl">${gh(['Responsible',''])}
+      <tbody>${planGroup(rows,x=>assigneeName(x.it.assigneeId))
+        .map(g=>trow(g.k,g.t)).join('')}</tbody></table>
+
+    ${sec('3 · By discipline')}
+    <table class="rtbl">${gh(['Discipline',''])}
+      <tbody>${planGroup(rows,x=>PRINT_DISC[x.doc.discipline]||x.doc.discipline||'—')
+        .map(g=>trow(g.k,g.t)).join('')}</tbody></table>
+
+    ${sec('4 · Overdue now — '+slipping.length+' item'+(slipping.length===1?'':'s'))}
+    ${slipping.length?`<table class="rtbl"><thead><tr><th class="c-idx">#</th>
+      <th class="c-ref">Document number</th><th class="c-title">Submittal name</th>
+      <th class="c-discipline">Discipline</th><th class="c-status">Responsible</th>
+      <th class="c-plannedDate">Target</th><th class="c-num">Days over</th>
+      <th class="c-grp">Week</th></tr></thead><tbody>
+      ${slipping.map((x,i)=>`<tr><td class="c-idx">${i+1}</td>
+        <td class="c-ref">${esc(x.doc.ref||'—')}</td>
+        <td class="c-title">${esc(x.doc.title||'')}</td>
+        <td class="c-discipline">${esc(PRINT_DISC[x.doc.discipline]||x.doc.discipline||'')}</td>
+        <td class="c-status" style="text-align:left;font-weight:400">${esc(assigneeName(x.it.assigneeId))}</td>
+        <td class="c-plannedDate">${esc(x.it.plannedDate||'—')}</td>
+        <td class="c-num"><b>${days(x.it.plannedDate,today)}</b></td>
+        <td class="c-grp">${esc(weekLabel(x.plan.weekStart))}</td></tr>`).join('')}
+      </tbody></table>`:'<div class="rnote">Nothing is past its target date.</div>'}
+
+    ${sec('5 · Delivered late — '+arrivedLate.length+' item'+(arrivedLate.length===1?'':'s'))}
+    ${arrivedLate.length?`<table class="rtbl"><thead><tr><th class="c-idx">#</th>
+      <th class="c-ref">Document number</th><th class="c-title">Submittal name</th>
+      <th class="c-discipline">Discipline</th><th class="c-status">Responsible</th>
+      <th class="c-plannedDate">Target</th><th class="c-plannedDate">Actual</th>
+      <th class="c-num">Days late</th><th class="c-grp">Week</th></tr></thead><tbody>
+      ${arrivedLate.map((x,i)=>`<tr><td class="c-idx">${i+1}</td>
+        <td class="c-ref">${esc(x.doc.ref||'—')}</td>
+        <td class="c-title">${esc(x.doc.title||'')}</td>
+        <td class="c-discipline">${esc(PRINT_DISC[x.doc.discipline]||x.doc.discipline||'')}</td>
+        <td class="c-status" style="text-align:left;font-weight:400">${esc(assigneeName(x.it.assigneeId))}</td>
+        <td class="c-plannedDate">${esc(x.it.plannedDate||'—')}</td>
+        <td class="c-plannedDate">${esc(x.st.sub||'—')}</td>
+        <td class="c-num"><b>${days(x.it.plannedDate,x.st.sub)}</b></td>
+        <td class="c-grp">${esc(weekLabel(x.plan.weekStart))}</td></tr>`).join('')}
+      </tbody></table>`:'<div class="rnote">Everything delivered so far arrived on or before its target date.</div>'}
+
+    <div class="rfoot">Taif Ar Rjum LOD — ${esc(title)} Analysis · all weeks · ${stamp}${
+      USER?' · issued by '+esc(USER.name):''}</div>`;
+}
+async function exportPlanAnalysisPDF(kind){
+  kind=kind||PLAN_KIND;
+  const weeks=PLANS.filter(p=>(p.kind||'submission')===kind);
+  if(!weeks.length)return toast('No '+(kind==='review'?'review':'submission')+' weeks to analyse');
+  toast('Gathering every week…');
+  /* the analysis spans all weeks, so every week's items must be in hand */
+  for(const p of weeks) if(!PITEMS[p.id]) await loadPlanItems(p.id);
+  const n=weeks.reduce((t,p)=>t+(PITEMS[p.id]||[]).length,0);
+  if(!n)return toast('No documents on any week to analyse');
+  let root=document.getElementById('printroot');
+  if(!root){root=document.createElement('div');root.id='printroot';document.body.appendChild(root);}
+  root.innerHTML=buildPlanAnalysis(kind);
+  document.body.classList.add('printing');
+  const done=()=>{document.body.classList.remove('printing');window.removeEventListener('afterprint',done);};
+  window.addEventListener('afterprint',done);
+  setTimeout(()=>{window.print();setTimeout(done,1500);},60);
+  toast(weeks.length+' weeks, '+n+' items — set Landscape, then Save as PDF');
+}
+
 function exportPlanPDF(planId){
   const plan=PLANS.find(p=>p.id===planId), items=PITEMS[planId]||[];
   if(!items.length)return toast('Nothing on this plan to export');
@@ -3104,31 +3287,28 @@ function attentionHTML(){
    as well as on a desktop (Print → Save as PDF). Landscape A4, tables only. */
 
 function filterLabel(){
-  const bits=[];
-  if(MOBILE){
-    if(MOB.fd)bits.push(MOB.fd);
-    if(MOB.fs)bits.push('Code '+MOB.fs);
-    const m={open:'Open items only',ur:'Under review',late:'Past target date',ns:'Not submitted'};
-    if(MOB.f&&m[MOB.f])bits.push(m[MOB.f]);
-    if(MOB.q)bits.push('Search: "'+MOB.q+'"');
-  }else{
-    if(GRID.fd)bits.push(GRID.fd);
-    if(GRID.fs)bits.push('Code '+GRID.fs);
-    const m={open:'Open items only',ur:'Under review',late:'Past target date',ns:'Not submitted'};
-    if(GRID.fx&&m[GRID.fx])bits.push(m[GRID.fx]);
-    if(GRID.q)bits.push('Search: "'+GRID.q+'"');
-  }
-  return bits.length?bits.join(' · '):'Complete register — no filter applied';
+  const bits=[], S=MOBILE?{fd:MOB.fd,fs:MOB.fs,fx:MOB.f,q:MOB.q,fh:''}
+                        :{fd:GRID.fd,fs:GRID.fs,fx:GRID.fx,q:GRID.q,fh:GRID.fh};
+  if(LEG!=='all')bits.push(LEG==='hesco'?'HESCO → AWPT':'AWPT → Maaden');
+  if(S.fd)bits.push(S.fd);
+  /* say the state in the leg's own words — "Code Awaiting reply" was nonsense */
+  if(S.fs)bits.push(LEG==='maaden'?maadenLabel(S.fs):(LEG==='hesco'?S.fs:'Code '+S.fs));
+  if(S.fh)bits.push('with '+S.fh);
+  const fx=(LEGFX[LEG]||LEGFX.all).find(x=>x[0]===S.fx);
+  if(S.fx&&fx&&fx[0])bits.push(fx[1]);
+  if(S.q)bits.push('Search: "'+S.q+'"');
+  return bits.length?bits.join(' · ')
+    :'Complete register — no filter applied';
 }
 function reportRows(){ return MOBILE?mobRows():(GRID&&GRID.rows?GRID.rows:AB); }
 function reportCols(){
   /* The report follows the leg you are printing, or it tells you about the wrong
      submission. A landscape page holds about eleven columns. */
   const set = LEG==='hesco'
-    ? ['docNumber','title','discipline','reviewClass','hOut','holder',
+    ? ['docNumber','title','discipline','reviewClass','hOut','hCourt',
        'plannedDate','hSent','hBack','hDays','toClient']
     : LEG==='maaden'
-    ? ['docNumber','title','discipline','reviewClass','mOut','holder',
+    ? ['docNumber','title','discipline','reviewClass','mOut','mCourt',
        'plannedDate','mSent','mBack','mDays']
     : ['docNumber','title','discipline','reviewClass','scope','status','holder',
        'plannedDate','awptSubmitted','issuedDate','respondedDate'];
@@ -3141,6 +3321,7 @@ const PRINT_HEAD={docNumber:'Document number',ref:'Ref',title:'Document',discipl
   plannedDate:'Planned',issuedDate:'Issued to Maaden',respondedDate:'Response',
   awptSubmitted:'Sent to AWPT',
   hOut:'AWPT status', hSent:'Sent to AWPT', hBack:'AWPT replied', hDays:'Days', toClient:'To Maaden',
+  hCourt:'Ball in court', mCourt:'Ball in court',
   mOut:'Maaden status', mSent:'Sent to Maaden', mBack:'Maaden replied', mDays:'Days'};
 
 function buildReport(){
@@ -3148,13 +3329,6 @@ function buildReport(){
   const n=rows.length;
   const base=rows.filter(inBase);
   const pct=base.length?Math.round(base.reduce((t,r)=>t+creditOf(r),0)/base.length*10)/10:0;
-  const app=rows.filter(r=>APPROVED.includes(r.status)).length;
-  const ur =rows.filter(r=>r.status==='Under review').length;
-  const ns =rows.filter(r=>r.status==='Not issued').length;
-  const wh =rows.filter(r=>r.holder==='HESCO').length;
-  const wa =rows.filter(r=>r.holder==='AWPT').length;
-  const wm =rows.filter(r=>r.holder==='Maaden').length;
-  const late=rows.filter(r=>r.holder!=='Closed'&&r.plannedDate&&r.plannedDate<today).length;
   const stamp=new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
 
   const cell=(r,c)=>{
@@ -3171,17 +3345,28 @@ function buildReport(){
       cols.map(c=>`<td class="c-${c.k}">${esc(cell(r,c))}</td>`).join('')+`</tr>`).join('');
 
   const kpi=(l,v)=>`<div class="rk"><b>${v}</b><span>${l}</span></div>`;
+  /* The figures must add up to the rows underneath them. On a leg they count
+     that leg's states; on Everything, the document's. */
+  const cnt=f=>rows.filter(f).length;
+  const heads = LEG==='all'
+    ? kpi('In selection',n)+kpi('Progress',pct+'%')+
+      kpi('Approved',cnt(r=>APPROVED.includes(r.status)))+
+      kpi('Under review',cnt(r=>r.status==='Under review'))+
+      kpi('Not issued',cnt(r=>r.status==='Not issued'))+
+      kpi('With HESCO',cnt(r=>r.holder==='HESCO'))+
+      kpi('With AWPT',cnt(r=>r.holder==='AWPT'))+
+      kpi('With Maaden',cnt(r=>r.holder==='Maaden'))+
+      kpi('Past planned',cnt(r=>r.holder!=='Closed'&&r.plannedDate&&r.plannedDate<today))
+    : LEGSTATE(LEG).map(st=>kpi(st.t,cnt(r=>legOf(r,LEG)===st.k)))
+        .join('')+kpi('Past planned',cnt(r=>legLate(r,LEG)));
+  const headline = LEG==='all' ? heads : kpi('In selection',n)+heads;
   return `<div class="rhead">
       <div class="rt"><h1>Taif Ar Rjum Package B — Design Deliverables</h1>
         <div class="rs">LOD register · Sub-Contract 111051/2026/0022</div></div>
       <div class="rd">${stamp}<br><span>${n} document${n===1?'':'s'}</span></div>
     </div>
     <div class="rfilt"><b>Selection:</b> ${esc(filterLabel())}</div>
-    <div class="rkpis">
-      ${kpi('In selection',n)}${kpi('Progress',pct+'%')}${kpi('Approved',app)}
-      ${kpi('Under review',ur)}${kpi('Not issued',ns)}${kpi('With HESCO',wh)}
-      ${kpi('With AWPT',wa)}${kpi('With Maaden',wm)}${kpi('Past planned',late)}
-    </div>
+    <div class="rkpis">${headline}</div>
     <table class="rtbl"><thead><tr><th class="c-idx">#</th>${head}</tr></thead>
       <tbody>${body}</tbody></table>
     <div class="rfoot">Taif Ar Rjum LOD Register · ${esc(filterLabel())} · ${stamp}${
@@ -3532,15 +3717,19 @@ function matrixHTML(){
       <td style="text-align:right">${s.t}</td><td style="text-align:right">${s.t?Math.round(s.app/s.t*100):0}%</td></tr></tbody></table>`;
 }
 function overdueHTML(limit){
-  const od=AB.filter(r=>r.holder!=='Closed'&&r.plannedDate&&r.plannedDate<today)
-    .map(r=>({...r,late:days(r.plannedDate,today)})).sort((a,b)=>b.late-a.late);
+  const od=DOCS().filter(r=>LEG==='all'
+      ? (r.holder!=='Closed'&&r.plannedDate&&r.plannedDate<today)
+      : legLate(r,LEG))
+    .map(r=>({...r,late:days(r.plannedDate,today),
+              court:LEG==='all'?r.holder:legCourt(r,LEG)}))
+    .sort((a,b)=>b.late-a.late);
   if(!od.length)return '<div class="empty">Nothing is past its planned date.</div>';
   return `<table><thead><tr><th>Document</th><th>Discipline</th><th>Planned</th>
     <th style="text-align:right">Days late</th><th>Ball in court</th></tr></thead><tbody>`+
     od.slice(0,limit||20).map(r=>`<tr><td>${esc(r.title)}</td><td>${esc(r.discipline)}</td>
       <td>${esc(r.plannedDate)}</td>
       <td style="text-align:right;color:var(--critical);font-weight:600">${r.late}</td>
-      <td>${esc(r.holder)}</td></tr>`).join('')+`</tbody></table>`+
+      <td>${esc(r.court)}</td></tr>`).join('')+`</tbody></table>`+
     (od.length>(limit||20)?`<div class="hint" style="padding:7px">Showing the ${limit||20} latest of ${od.length}.</div>`:'');
 }
 const DASHMETA={
@@ -3677,6 +3866,43 @@ const LEGSTATE=leg=>leg==='hesco'
      {k:'On hold',            t:'On hold',          s:'held pending prerequisites',        c:HOLDCOLOR},
      {k:'Not submitted',      t:'Not submitted',    s:'the Client has not seen it',        c:'#cbd2d8'}];
 const legOf=(r,leg)=>legState(r,leg==='hesco'?'HESCO':'Maaden');
+/* THE RULE, IN ONE PLACE: on a leg every figure, filter and label speaks that
+   leg's own vocabulary; on "Everything" they speak the document's. Anything that
+   counts or names a state must go through these. */
+const legOpen=(r,leg)=>legCourt(r,leg)!=='Closed';
+const legLate=(r,leg)=>!!(r.plannedDate&&r.plannedDate<today&&legOpen(r,leg));
+const legCourts=leg=>leg==='hesco'?['HESCO','AWPT','Maaden','Closed','On hold']
+                                  :['Maaden','HESCO','Closed','On hold'];
+/* the quick presets, worded for the leg you are on */
+const LEGFX={
+  hesco:[['','Everything'],['open','Open on this leg'],['ur','Out for AWPT review'],
+         ['late','Past planned, still open'],['ns','Never submitted to AWPT'],
+         ['win','Past the review window']],
+  maaden:[['','Everything'],['open','Open on this leg'],['ur','Out for Client review'],
+          ['late','Past planned, still open'],['ns','Not submitted to Maaden'],
+          ['win','Past the review window']],
+  all:[['','Everything'],['open','Open only'],['ur','Under review'],
+       ['late','Past target'],['ns','Not issued'],['win','Past the review window']]};
+function legFx(r,leg,fx){
+  if(fx==='open')return legOpen(r,leg);
+  if(fx==='ur')  return legCourt(r,leg)===(leg==='hesco'?'AWPT':'Maaden');
+  if(fx==='late')return legLate(r,leg);
+  if(fx==='ns')  return legOf(r,leg)==='Not submitted';
+  return true;
+}
+function legCourt(r,leg){
+  if(isHold(r))return 'On hold';
+  const L=leg==='hesco'?'HESCO':'Maaden', c=lastCycle(r,L);
+  if(!c)return leg==='hesco'?'HESCO':(r.holder||'');   /* not yet on this leg */
+  if(!(c.responded||''))return leg==='hesco'?'AWPT':'Maaden';   /* out for review */
+  const st=c.status||'';
+  if(leg==='hesco')
+    return st==='RWC' ? 'HESCO'                    /* comments to resolve */
+         : (r.holder||'');                          /* cleared — wherever it went next */
+  if(APPROVED.includes(st))return 'Closed';
+  if(st==='Rejected')return 'HESCO';
+  return r.holder||'';
+}
 /* AWPT-only documents never reach the Client, so nothing evidences a clearance:
    their verdict is inferred from whether HESCO resubmitted (about 77% right on
    the cycles the Client's submissions do grade). Never show it as a plain fact. */
@@ -3830,6 +4056,15 @@ function renderDashOne(w){
     w.body.innerHTML=legbar+legDashHTML(LEG);
     w.body.querySelectorAll('[data-openreg]').forEach(b=>b.onclick=()=>
       openRegister(b.dataset.openreg));
+    wireLegDash(w,LEG);
+    return;
+  }
+  /* the "Everything" window on a leg draws exactly what the leg window draws —
+     one code path per leg, so the two can never say different things */
+  if(w.kind==='dash'&&LEG!=='all'){
+    w.body.innerHTML=legbar+legDashHTML(LEG);
+    w.body.querySelectorAll('[data-leg]').forEach(b=>b.onclick=()=>{
+      LEGALL=b.dataset.leg; renderDash(); renderAllGrids(); });
     wireLegDash(w,LEG);
     return;
   }
@@ -4130,11 +4365,13 @@ function mobRows(){
      holder rather than by the leg's own states */
   return legRows(AB).filter(r=>{
     if(q&&!((r.ref||'')+' '+(r.title||'')).toLowerCase().includes(q))return false;
-    if(MOB.f==='open'&&!isOpen(r))return false;
-    if(MOB.f==='hesco'&&r.holder!=='HESCO')return false;
-    if(MOB.f==='awpt'&&r.holder!=='AWPT')return false;
-    if(MOB.f==='maaden'&&r.holder!=="Maaden")return false;
-    if(MOB.f==='ns'&&r.status!=='Not issued')return false;
+    if(LEG==='all'){
+      if(MOB.f==='open'&&!isOpen(r))return false;
+      if(MOB.f==='hesco'&&r.holder!=='HESCO')return false;
+      if(MOB.f==='awpt'&&r.holder!=='AWPT')return false;
+      if(MOB.f==='maaden'&&r.holder!=="Maaden")return false;
+      if(MOB.f==='ns'&&r.status!=='Not issued')return false;
+    }
     if(MOB.fs){
       const st=(LEG==='hesco'||LEG==='maaden')?legState(r,LEG):(r.status||'Not issued');
       if(st!==MOB.fs)return false; }
