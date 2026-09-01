@@ -1202,6 +1202,13 @@ const MAADEN_GRADE={
   'Replied':  {g:'I', t:'For information',        d:'issued to the Client for information'},
   'Deemed':   {g:'A', t:'Deemed accepted',        d:'no reply within 10 working days'}};
 const maadenLabel=v=>{const m=MAADEN_GRADE[v]; return m?m.g+' — '+m.t:(v||'');};
+/* A document's own status is whatever the last reviewer said, so when that
+   reviewer was the Client it must be shown in the Client's words: Maaden stamps
+   A, C, R and I, never "Code B". The stored value is untouched — filters,
+   scoring and the database all keep the internal name — this is the label only. */
+const statusText=v=>MAADEN_GRADE[v]?maadenLabel(v):(v||'');
+/* the short form, for a narrow pill or a phone card */
+const statusCode=v=>MAADEN_GRADE[v]?MAADEN_GRADE[v].g:(v||'');
 const LCOLOR={'Code A':'#0f9d58','Code B':'#6fc38a','Under Client review':'#f0b429',
   'Replied':'#6b7f92','Awaiting reply':'#f0b429','Not submitted':'#cbd2d8',
   'On hold':'#7030a0'};
@@ -1303,7 +1310,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-31 · v70';
+const BUILD='LOD 2026-08-31 · v71';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1821,7 +1828,13 @@ function cellText(r,c){
     if(c.k==='hOut'&&isInferred(lastCycle(r,'HESCO')))
       return statusPill(v, v+' ~',
         'Worked out from the resubmission pattern, not recorded — this is an AWPT-only document, so no Client submission can evidence a clearance');
-    return statusPill(v, c.k==='mOut'?maadenLabel(v):null);
+    if(c.k==='mOut')return statusPill(v,maadenLabel(v));
+    /* the Everything register mixes both vocabularies — each verdict is shown
+       in the words of whoever gave it */
+    if(c.k==='status'&&MAADEN_GRADE[v])
+      return statusPill(v, maadenLabel(v), 'Maaden code '+MAADEN_GRADE[v].g+
+        ' — '+MAADEN_GRADE[v].d);
+    return statusPill(v);
   }
   if(c.k==='title'&&CCOUNT[r.id])
     return esc(v)+'<span class="cbadge" title="'+CCOUNT[r.id]+' comment(s)">'+CCOUNT[r.id]+'</span>';
@@ -1857,7 +1870,7 @@ function renderGrid(g){
     <select class="f" id="gfs"><option value="">All statuses</option>${
       (LEG==='all'?STATUSES:LEGSTATUSES[LEG]).map(k=>
         `<option value="${esc(k)}"${GRID.fs===k?' selected':''}>${
-          esc(LEG==='maaden'?maadenLabel(k):k)}</option>`).join('')}</select>
+          esc(LEG==='maaden'?maadenLabel(k):statusText(k))}</option>`).join('')}</select>
     <select class="f" id="gfh"><option value="">Anyone's court</option>${
       (LEG==='all'?HOLDERS:legCourts(LEG)).map(k=>
         `<option${GRID.fh===k?' selected':''}>${esc(k)}</option>`).join('')}</select>
@@ -2066,6 +2079,8 @@ function beginEdit(r,c){
 }
 async function gridKey(e){
   if(GRID.editing)return;
+  /* the search box and the filter menus sit in the same window as the grid */
+  if(typingInField(e)&&!(e.target&&e.target.classList&&e.target.classList.contains('cellin')))return;
   const cs=visCols(), maxR=GRID.rows.length-1, maxC=cs.length-1;
   const mv=(dr,dc,ext)=>{
     const r=Math.max(0,Math.min(maxR,GRID.cur.r+dr)), c=Math.max(0,Math.min(maxC,GRID.cur.c+dc));
@@ -2163,7 +2178,21 @@ async function deleteSelected(){
       toast(ids.length+' document(s) moved to the bin — undo, or restore from the menu');
     },'danger']]);
 }
+/* Is the person typing into a box of their own? The paste handler below is on
+   the document, so without this it swallowed a paste meant for the search field
+   — the search stayed empty, and the clipboard was written into a register cell
+   instead. Anywhere text can be typed is off limits to the grid. */
+function typingInField(e){
+  const el=(e&&e.target)||document.activeElement;
+  if(!el||!el.tagName)return false;
+  if(el.isContentEditable)return true;
+  const tag=el.tagName.toUpperCase();
+  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return true;
+  /* the cell editor is an input too, but the grid owns that one */
+  return false;
+}
 document.addEventListener('paste',e=>{
+  if(typingInField(e))return;              /* let the field have it */
   if(!GRID||!GRID.win||GRID.editing)return;
   if(!GQ('[id="gwrap"]'))return;
   const t=(e.clipboardData||window.clipboardData).getData('text');
@@ -2644,7 +2673,9 @@ async function openPlans(){
               ${canEdit()?'':' disabled'}></td>
             <td><input class="f pd" type="date" data-i="${it.id}" value="${esc(it.plannedDate||'')}"${canEdit()?'':' disabled'}></td>
             <td><span class="pstate ${itemState(it,plan).cls}">${esc(itemState(it,plan).label)}</span></td>
-            <td class="ctr"><span class="pill ${k==='Not Submitted'?'s-N':'s-'+k}">${esc(k==='Not Submitted'?'Not sub.':k)}</span></td>
+            <td class="ctr">${k==='Not Submitted'
+              ?'<span class="pill s-N">Not sub.</span>'
+              :statusPill(k,MAADEN_GRADE[k]?maadenLabel(k):k)}</td>
             <td style="white-space:nowrap">
               <button class="btn" data-hist="${it.docId}" style="padding:2px 8px"
                 title="Submission history">⟲</button>
@@ -3384,7 +3415,7 @@ function filterLabel(){
   if(LEG!=='all')bits.push(LEG==='hesco'?'HESCO → AWPT':'AWPT → Maaden');
   if(S.fd)bits.push(S.fd);
   /* say the state in the leg's own words — "Code Awaiting reply" was nonsense */
-  if(S.fs)bits.push(LEG==='maaden'?maadenLabel(S.fs):(LEG==='hesco'?S.fs:'Code '+S.fs));
+  if(S.fs)bits.push(LEG==='maaden'?maadenLabel(S.fs):statusText(S.fs));
   if(S.fh)bits.push('with '+S.fh);
   const fx=(LEGFX[LEG]||LEGFX.all).find(x=>x[0]===S.fx);
   if(S.fx&&fx&&fx[0])bits.push(fx[1]);
@@ -3425,7 +3456,7 @@ function buildReport(){
 
   const cell=(r,c)=>{
     let v=c.calc?c.calc(r):(r[c.k]??'');
-    if(c.k==='status')v=v||'Not issued';
+    if(c.k==='status')v=statusText(v)||'Not issued';
     if(c.k==='discipline')v=PRINT_DISC[v]||v;
     if(c.k==='mOut')v=maadenLabel(v);
     /* an AWPT-only verdict is worked out, not recorded — say so on paper too */
@@ -3801,8 +3832,11 @@ function matrixHTML(){
     return `<tr><td>${esc(d)}</td>${cs.map(n=>`<td style="text-align:center">${n||'—'}</td>`).join('')}
       <td style="text-align:right"><b>${tot}</b></td><td style="text-align:right">${tot?Math.round(app/tot*100):0}%</td></tr>`;}).join('');
   const tot=CODES.map(k=>AB.filter(r=>(r.status||'Not Submitted')===k).length),s=stats();
+  /* column heads in the reviewer's own vocabulary — the grade letter, with the
+     full wording on hover, since the head has to stay narrow */
   return `<table><thead><tr><th>Discipline</th>${CODES.map(k=>
-      `<th style="text-align:center">${k==='Not Submitted'?'Not sub.':k}</th>`).join('')}
+      `<th style="text-align:center"${MAADEN_GRADE[k]?' title="'+esc(maadenLabel(k))+'"':''
+        }>${k==='Not Submitted'?'Not sub.':esc(statusCode(k))}</th>`).join('')}
       <th style="text-align:right">Total</th><th style="text-align:right">Approved</th></tr></thead>
     <tbody>${rows}<tr style="font-weight:650;background:var(--surface)">
       <td>All disciplines</td>${tot.map(n=>`<td style="text-align:center">${n}</td>`).join('')}
@@ -4550,7 +4584,8 @@ function card(r,i){
         style="animation-delay:${Math.min(i||0,12)*26}ms">
       <div class="dc-h"><input type="checkbox" class="mchk"${PICKED.has(r.id)?' checked':''}>
         <span class="dc-no">${esc(r.ref)}</span>
-        <span class="dc-code">${esc(cls==='N'?'—':k)}</span></div>
+        <span class="dc-code" title="${esc(cls==='N'?'':statusText(k))}">${
+          esc(cls==='N'?'—':statusCode(k))}</span></div>
       <h3 class="dc-t">${esc(r.title)}</h3>
       <div class="dc-m">${esc(SHORT_DISC[r.discipline]||r.discipline||'—')}</div></article>`;
   }
@@ -4577,8 +4612,9 @@ function card(r,i){
     <div class="dc-h"><span class="dc-no">${esc(onLeg?(r.ref||''):(r.holder||''))}</span>
       ${(()=>{ /* the leg's own vocabulary and colours, with Maaden's grade letters */
         const col=COLOR[k]||LCOLOR[k]||'#8c9aa8';
-        const g=(onLeg&&LEG==='maaden'&&MAADEN_GRADE[k])
-          ? MAADEN_GRADE[k].g+' — '+MAADEN_GRADE[k].t : k;
+        /* on the Maaden leg and on Everything alike, a Client verdict is
+           shown as Maaden wrote it */
+        const g=MAADEN_GRADE[k]?maadenLabel(k):k;
         const inf=onLeg&&LEG==='hesco'&&isInferred(lastCycle(r,'HESCO'))?' ~':'';
         return `<span class="dc-code" title="${esc(inf?'inferred from the resubmission':g)}"
           style="background:${col}22;color:${col};border-color:${col}55">${esc(g+inf)}</span>`;})()}</div>
@@ -4644,7 +4680,8 @@ function mobOne(){
       <span class="v ${MONO[c.k]?'mono':''} ${v?'':'none'}">${esc(v||'Not set')}</span></div>`;};
   return `<div class="dcard k-${cls}" style="animation:none;margin-bottom:11px;cursor:default">
       <div class="dc-h"><span class="dc-no">${esc(r.ref)}</span>
-        <span class="dc-code">${esc(cls==='N'?'—':k)}</span></div>
+        <span class="dc-code" title="${esc(cls==='N'?'':statusText(k))}">${
+          esc(cls==='N'?'—':statusText(k))}</span></div>
       <h3 class="dc-t" style="-webkit-line-clamp:4">${esc(r.title)}</h3></div>
     <div class="spec"><h4>Details</h4>${show.map(row).join('')}</div>
     <div class="spec"><h4>Submission history</h4>
@@ -5691,7 +5728,7 @@ function _oldHistoryHTML(r){
       const k=c.status||'W';
       return `<tr><td>${i+1}</td><td>${esc(c.rev)||'—'}</td><td>${esc(c.submitted)||'—'}</td>
         <td>${esc(c.received)||'<span class="hint">still out</span>'}</td>
-        <td><span class="pill ${k==='Not Submitted'?'s-N':'s-'+k}">${esc(k)}</span></td>
+        <td>${statusPill(k,MAADEN_GRADE[k]?maadenLabel(k):k)}</td>
         <td style="text-align:right">${c.turnaround==null?
           (c.submitted?days(c.submitted,today)+' so far':'—'):c.turnaround}</td></tr>`;}).join('')}
     </tbody></table>
