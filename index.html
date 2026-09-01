@@ -1109,6 +1109,7 @@ table.rctbl tr[data-go]:hover td{background:var(--chip)}
       <button data-a="activity">Activity log</button>
       <button data-a="users">People</button>
       <hr>
+      <button data-a="alerts">Alerts and sound…</button>
       <button data-a="arrange">Tidy the windows</button>
       <button data-a="theme">Light / dark</button>
       <button data-a="mobile">Switch to the phone layout</button>
@@ -1289,7 +1290,8 @@ const SHOWN=['docNumber','title','reviewClass','scope','rev','status',
              'issuedDate','respondedDate'];
 const DEFAULT_HIDDEN=COLS.filter(c=>!SHOWN.includes(c.k)&&!c.leg).map(c=>c.k);
 let PREFS={order:SHOWN.concat(COLS.map(c=>c.k).filter(k=>!SHOWN.includes(k))),
-           hidden:DEFAULT_HIDDEN, w:{}, rowh:24, wrap:false, freeze:0};
+           hidden:DEFAULT_HIDDEN, w:{}, rowh:24, wrap:false, freeze:0,
+           sound:true, vol:0.35};
 const PREFS_V=4;   /* bumped when the default column set changes */
 let NOTIFS=[], ACTS=[];
 
@@ -1301,7 +1303,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-31 · v69';
+const BUILD='LOD 2026-08-31 · v70';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1493,7 +1495,8 @@ function currentPrefs(){
      threw the saved column layout away. Anything applyPrefs reads must be saved. */
   return {theme:document.documentElement.dataset.theme==='dark'?'dark':'light',
           order:PREFS.order,hidden:PREFS.hidden,w:PREFS.w,rowh:PREFS.rowh,
-          wrap:PREFS.wrap,freeze:PREFS.freeze,v:PREFS_V};
+          wrap:PREFS.wrap,freeze:PREFS.freeze,
+          sound:PREFS.sound,vol:PREFS.vol,v:PREFS_V};
 }
 async function savePrefs(){
   const p=currentPrefs();
@@ -1512,6 +1515,9 @@ function applyPrefs(p){
   if(p.order)PREFS.order=COLS.map(c=>c.k).sort((a,b)=>{
     const ia=p.order.indexOf(a),ib=p.order.indexOf(b);
     return (ia<0?99:ia)-(ib<0?99:ib);});
+  /* read before the version check below, which returns early */
+  if(typeof p.sound==='boolean')PREFS.sound=p.sound;
+  if(typeof p.vol==='number')PREFS.vol=Math.max(0,Math.min(1,p.vol));
   if(p.v!==PREFS_V){ PREFS.hidden=DEFAULT_HIDDEN;
     PREFS.order=SHOWN.concat(COLS.map(c=>c.k).filter(k=>!SHOWN.includes(k)));
     return; }                      /* one-time reset to the new default columns */
@@ -1597,7 +1603,9 @@ function renderDock(){
 function dockStatus(){
   const s=withLeg('all',stats);
   return (LIVE?'● live':'● snapshot, read-only')+' · '+s.t+' documents · '+
-    s.subAwpt+' submitted to AWPT · '+s.review+' under Client review'+(USER?' · '+esc(USER.name):'')+' · build '+BUILD;
+    s.subAwpt+' submitted to AWPT · '+s.review+' under Client review'+
+    (LIVE?(LIVE_OK?' · updating live':' · checking every 20s'):'')+
+    (USER?' · '+esc(USER.name):'')+' · build '+BUILD;
 }
 let _drag=null;
 function startDrag(e,w){
@@ -4868,6 +4876,8 @@ function mobMore(){
     <div class="srow tap" data-mm="xlsx"><span class="l">Excel</span><span class="v">Current filter</span></div>
     </div>
     <div class="spec"><h4>Settings</h4>
+    <div class="srow tap" data-mm="alerts"><span class="l">Alerts and sound</span>
+      <span class="v">${PREFS.sound?'Chime on':'Silent'}</span></div>
     <div class="srow tap" data-mm="theme"><span class="l">Appearance</span>
       <span class="v">${document.documentElement.dataset.theme==='dark'?'Dark':'Light'}</span></div>
     <div class="srow tap" data-mm="desktop"><span class="l">Layout</span><span class="v">Full desktop view</span></div>
@@ -4979,6 +4989,7 @@ function wireMob(){
   b.querySelectorAll('[data-mm]').forEach(el=>el.onclick=()=>{
     const a=el.dataset.mm;
     if(a==='people')mobPeople();
+    else if(a==='alerts')alertsBox();
     else if(a==='pdf')exportPDF(); else if(a==='csv')exportCSV(); else if(a==='xlsx')exportXLSX();
     else if(a==='theme')toggleTheme();
     else if(a==='desktop')setMobile(false,true);
@@ -5137,9 +5148,8 @@ async function loadData(){
     api('projects?id=eq.'+PROJ+'&limit=1')]);
   AB=ab; LIVE=true;
   try{ NOTIFS=await api('lod_notifs?order=id.desc&limit=100'); }catch(e){}
-  setInterval(async()=>{ if(document.hidden||!LIVE)return;
-    try{ const n=await api('lod_notifs?order=id.desc&limit=100');
-      if(n.length!==NOTIFS.length){NOTIFS=n;updateBell();} }catch(e){} },90*1000);
+  NOTIF_MAX=NOTIFS.length?Math.max(...NOTIFS.map(n=>+n.id||0)):0;
+  startLive();
   await loadRevs();
   await loadLegs();
   await loadCommentCounts();
@@ -5149,6 +5159,217 @@ async function loadData(){
   await loadAttention();
   touchSeen();
 }
+/* ================= staying up to date =================
+   Until now the register was fetched once at sign-in and never again, so
+   somebody else's edit stayed invisible until you reloaded the page. The only
+   timer polled the notification list and compared its LENGTH — but that query
+   is capped at 100 rows and there are well over a hundred notifications, so the
+   length was always exactly 100 and the bell could never fire at all.
+
+   Two paths now, because a websocket is fast but not guaranteed:
+     · realtime — a socket to Postgres' replication stream, changes arrive in
+       about a second;
+     · polling  — one row every 20 seconds asking "what is the newest
+       notification id", which costs almost nothing and works even when the
+       socket is blocked by a proxy.
+   Both funnel into the same syncNow(), so the app behaves identically either
+   way and the fast path is a bonus rather than a dependency. */
+let NOTIF_MAX=0, LIVEWS=null, LIVE_OK=false, _syncT=null, _pollT=null,
+    _wsTries=0, _syncing=false;
+
+/* Reload the data other people can change, then redraw. Deliberately does not
+   touch window positions, filters or the current selection. */
+async function syncNow(opts){
+  if(!LIVE||_syncing)return; _syncing=true;
+  try{
+    const before=NOTIF_MAX;
+    const [docs,notifs]=await Promise.all([
+      api('lod_docs?deletedAt=is.null&order=sn.asc&limit=2000'),
+      api('lod_notifs?order=id.desc&limit=100').catch(()=>NOTIFS)]);
+    if(Array.isArray(docs)&&docs.length)AB=docs;
+    if(Array.isArray(notifs)){
+      NOTIFS=notifs;
+      NOTIF_MAX=notifs.length?Math.max(...notifs.map(n=>+n.id||0)):NOTIF_MAX;
+    }
+    await loadLegs();
+    await loadRevs();
+    /* a fresh notification that this person has not read is what earns a sound */
+    const fresh=NOTIFS.filter(n=>+n.id>before&&n.read!=='Yes');
+    refresh();
+    if(fresh.length&&before)announce(fresh);
+  }catch(e){ /* a failed sync is not worth interrupting anyone over */ }
+  finally{ _syncing=false; }
+}
+/* Several rows usually change together, so a burst is collapsed into one sync.
+   Note it does NOT restart an armed timer: a trigger that keeps firing — a fast
+   poll, or a long edit by somebody else — would otherwise push the sync back
+   every time and it would never actually run. */
+function syncSoon(){
+  if(_syncT)return;
+  _syncT=setTimeout(()=>{ _syncT=null; syncNow(); },700);
+}
+
+/* ---- the bell ---------------------------------------------------------
+   A soft, low two-tone chime built in the browser, so there is no audio file
+   to host and nothing to load. Browsers refuse to make noise until the person
+   has interacted with the page, so the context is created on the first click
+   and simply stays silent before that. */
+let AC=null;
+function audioCtx(){
+  if(AC)return AC;
+  const C=window.AudioContext||window.webkitAudioContext; if(!C)return null;
+  try{ AC=new C(); }catch(e){ return null; }
+  return AC;
+}
+document.addEventListener('pointerdown',()=>{
+  const c=audioCtx(); if(c&&c.state==='suspended')c.resume().catch(()=>{});
+},{once:false});
+
+function chime(){
+  if(!PREFS.sound)return;
+  const c=audioCtx(); if(!c||c.state!=='running')return;
+  const t=c.currentTime, vol=Math.max(0,Math.min(1,PREFS.vol==null?0.35:PREFS.vol));
+  /* two low partials a fifth apart, struck softly and left to ring */
+  [[392,0],[587.33,0.09]].forEach(([hz,at],i)=>{
+    const o=c.createOscillator(), g=c.createGain();
+    o.type='sine'; o.frequency.value=hz;
+    const peak=vol*(i?0.5:0.8), s=t+at;
+    g.gain.setValueAtTime(0.0001,s);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002,peak),s+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001,s+1.15);
+    o.connect(g); g.connect(c.destination);
+    o.start(s); o.stop(s+1.2);
+  });
+}
+/* ring, flash the taskbar count, and — if the tab is in the background and the
+   person has allowed it — raise a desktop notification */
+function announce(fresh){
+  chime();
+  const n=fresh.length, first=fresh[0]||{};
+  if(document.hidden&&window.Notification&&Notification.permission==='granted'){
+    try{ const note=new Notification(n===1?(first.title||'LOD Tracker'):n+' updates',
+      {body:n===1?(first.body||''):first.title||'', tag:'lod', icon:''});
+      note.onclick=()=>{window.focus();note.close();};
+    }catch(e){}
+  }
+  toast(n===1?(first.title||'Updated'):n+' updates just came in');
+}
+function alertsBox(){
+  const on=PREFS.sound, v=Math.round((PREFS.vol==null?0.35:PREFS.vol)*100);
+  const perm=window.Notification?Notification.permission:'unsupported';
+  msgBox('Alerts and sound','',
+    `<div class="hint" style="margin-bottom:10px">The app watches for other
+       people's changes and brings them in on its own. This is what it does when
+       something arrives.</div>
+     <label class="fl">Bell</label>
+     <label style="display:flex;align-items:center;gap:8px;margin:4px 0 10px">
+       <input type="checkbox" id="alsnd"${on?' checked':''}>
+       <span>Play a soft chime for anything new</span></label>
+     <label class="fl">Volume</label>
+     <input type="range" class="f" id="alvol" min="0" max="100" value="${v}"
+        style="padding:0;height:26px">
+     <div style="margin-top:8px"><button class="btn" id="altest">Hear it</button></div>
+     <label class="fl" style="margin-top:12px">Desktop alerts</label>
+     <div class="hint">${perm==='granted'?'On — alerts appear when this tab is in the background.'
+        :perm==='denied'?'Blocked by the browser. Turn them back on in the padlock menu beside the address bar.'
+        :perm==='unsupported'?'This browser cannot show desktop alerts.'
+        :'Off — the browser will ask you once.'}</div>
+     ${perm==='default'?'<div style="margin-top:6px"><button class="btn" id="alask">Turn on desktop alerts</button></div>':''}
+     <div class="hint" style="margin-top:12px">Updates arrive
+       <b id="allive">${LIVE_OK?'live, within a second':'about every 20 seconds'}</b>.</div>`,
+    [['Done',null,'primary']]);
+  const m=document.getElementById('msg');
+  const snd=m.querySelector('[id="alsnd"]'), vol=m.querySelector('[id="alvol"]');
+  const apply=()=>{ PREFS.sound=snd.checked; PREFS.vol=(+vol.value||0)/100; savePrefs(); };
+  snd.onchange=apply;
+  vol.oninput=()=>{ PREFS.vol=(+vol.value||0)/100; };
+  vol.onchange=()=>{ apply(); chime(); };
+  const t=m.querySelector('[id="altest"]'); if(t)t.onclick=()=>{ apply(); chime(); };
+  const k=m.querySelector('[id="alask"]'); if(k)k.onclick=()=>{ askForAlerts(); closeMsg(); };
+}
+function askForAlerts(){
+  if(!window.Notification)return toast('This browser cannot show desktop alerts');
+  if(Notification.permission==='granted')return toast('Desktop alerts are already on');
+  Notification.requestPermission().then(p=>
+    toast(p==='granted'?'Desktop alerts are on':'Desktop alerts stay off'));
+}
+
+/* ---- realtime ---------------------------------------------------------
+   The Supabase realtime endpoint speaks the Phoenix channel protocol, which is
+   plain JSON over a websocket — no library needed. If anything about it fails
+   the polling below carries on regardless. */
+function startLive(){
+  clearInterval(_pollT);
+  /* the safety net runs always, slowly; it is cheap — one row */
+  _pollT=setInterval(async()=>{
+    if(document.hidden||!LIVE)return;
+    try{
+      const r=await api('lod_notifs?select=id&order=id.desc&limit=1');
+      const top=(r&&r[0])?+r[0].id:0;
+      if(top>NOTIF_MAX)syncSoon();
+    }catch(e){}
+  }, LIVE_OK?60*1000:20*1000);
+  connectLive();
+}
+function connectLive(){
+  if(!LIVE||!TOKEN||!window.WebSocket)return;
+  try{ if(LIVEWS)LIVEWS.close(); }catch(e){}
+  let ws;
+  try{
+    ws=new WebSocket(SB_URL.replace(/^http/,'ws')+
+      '/realtime/v1/websocket?apikey='+encodeURIComponent(SB_KEY)+'&vsn=1.0.0');
+  }catch(e){ return; }
+  LIVEWS=ws;
+  let ref=0, hb=null;
+  const send=(topic,event,payload)=>{
+    try{ ws.send(JSON.stringify({topic,event,payload:payload||{},ref:String(++ref)})); }catch(e){}
+  };
+  ws.onopen=()=>{
+    send('realtime:lod','phx_join',{
+      config:{broadcast:{self:false},presence:{key:''},
+        postgres_changes:[
+          {event:'*',schema:'public',table:'lod_docs'},
+          {event:'*',schema:'public',table:'lod_history'},
+          {event:'*',schema:'public',table:'lod_notifs'},
+          {event:'*',schema:'public',table:'lod_plan_items'}]},
+      access_token:TOKEN});
+    hb=setInterval(()=>send('phoenix','heartbeat',{}),25000);
+  };
+  ws.onmessage=e=>{
+    let m=null; try{ m=JSON.parse(e.data); }catch(_){ return; }
+    if(m.event==='phx_reply'&&m.payload&&m.payload.status==='ok'&&m.topic==='realtime:lod'){
+      LIVE_OK=true; _wsTries=0; renderDock();
+      /* the socket is trustworthy, so the poll can slow right down */
+      startPollRate(60*1000);
+    }
+    if(m.event==='postgres_changes'||m.event==='INSERT'||m.event==='UPDATE'||m.event==='DELETE')
+      syncSoon();
+    if(m.event==='system'&&m.payload&&/error/i.test(m.payload.status||''))LIVE_OK=false;
+  };
+  const bail=()=>{
+    clearInterval(hb); LIVE_OK=false; renderDock();
+    startPollRate(20*1000);
+    /* back off, but keep trying — a laptop lid or a dropped VPN should heal */
+    if(LIVE){ const wait=Math.min(60000,2000*Math.pow(2,Math.min(_wsTries++,4)));
+      setTimeout(()=>{ if(LIVE&&(!LIVEWS||LIVEWS.readyState>1))connectLive(); },wait); }
+  };
+  ws.onclose=bail; ws.onerror=()=>{ try{ws.close();}catch(e){} };
+}
+function startPollRate(ms){
+  clearInterval(_pollT);
+  _pollT=setInterval(async()=>{
+    if(document.hidden||!LIVE)return;
+    try{
+      const r=await api('lod_notifs?select=id&order=id.desc&limit=1');
+      const top=(r&&r[0])?+r[0].id:0;
+      if(top>NOTIF_MAX)syncSoon();
+    }catch(e){}
+  },ms);
+}
+/* coming back to the tab is the moment you most want to be current */
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&LIVE)syncSoon(); });
+window.addEventListener('online',()=>{ if(LIVE){ connectLive(); syncSoon(); } });
+
 async function loadMembers(){
   try{ MEMBERS=await api('lod_members?order=name.asc'); }catch(e){ MEMBERS=[]; }
 }
@@ -5528,7 +5749,8 @@ menu.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{
   if(a==='cols')openCols(); else if(a==='pdf')exportPDF(); else if(a==='xlsx')exportXLSX(); else if(a==='csv')exportCSV();
   else if(a==='import')importExcel(); else if(a==='bin')openBin();
   else if(a==='lod_activity')openActivity();
-  else if(a==='users')openUsers(); else if(a==='arrange')arrangeWins();
+  else if(a==='users')openUsers(); else if(a==='alerts')alertsBox();
+  else if(a==='arrange')arrangeWins();
   else if(a==='theme')toggleTheme(); else if(a==='mobile')setMobile(true,true);
   else if(a==='logout')logout();
 });
