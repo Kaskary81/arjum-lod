@@ -658,21 +658,12 @@ body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent)
      register, so they get their own widths. Left on the register's, the two
      dates in the late table overlap and "Mechanical" breaks mid-word. Each
      set totals 100%. */
-  #printroot table.rdet .c-idx{width:4%}
-  #printroot table.rdet .c-ref{width:13%}
-  #printroot table.rdet .c-title{width:30%}
-  #printroot table.rdet .c-discipline{width:11%;white-space:nowrap}
-  #printroot table.rdet .c-plannedDate{width:12%;white-space:nowrap;padding-right:5pt}
-  #printroot table.rdet .c-num{width:8%}
-  #printroot table.rdet .c-grp{width:22%}
-  /* the late table carries two dates side by side, so the name column gives way
-     rather than the dates overlapping */
-  #printroot table.rdet.late .c-ref{width:12%}
-  #printroot table.rdet.late .c-title{width:20%}
-  #printroot table.rdet.late .c-discipline{width:10%}
-  #printroot table.rdet.late .c-plannedDate{width:12%}
-  #printroot table.rdet.late .c-num{width:8%}
-  #printroot table.rdet.late .c-grp{width:22%}
+  /* The plan report reuses the register report's own columns and widths, so
+     the two print as the same document. Only the two colours are extra. */
+  #printroot .p-ok{color:#0a7a44}
+  #printroot .p-over{color:#b3241f}
+  #printroot .p-wait{color:#9a6a00}
+  #printroot table.rtbl .c-hOut{white-space:nowrap}
   table.rtbl .c-num{width:7%;text-align:center;font-variant-numeric:tabular-nums}
   table.rtbl .c-pct{width:7%;text-align:center;font-weight:700;
     font-variant-numeric:tabular-nums}
@@ -1080,6 +1071,7 @@ table.rctbl tr[data-go]:hover td{background:var(--chip)}
 .legtab.on{border-color:var(--accent);background:linear-gradient(180deg,var(--accent-soft),transparent);
   box-shadow:0 0 0 3px rgba(168,85,247,.14)}
 .legtab.on b{color:#e9d5ff}
+.lockmark{font-size:10.5px;color:var(--goodtext);white-space:nowrap}
 </style>
 </head>
 <body>
@@ -1310,7 +1302,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-31 · v71';
+const BUILD='LOD 2026-08-31 · v79';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2457,6 +2449,15 @@ const weekStartOf=d=>{const x=new Date(d);x.setDate(x.getDate()-((x.getDay()+1)%
 const monday=weekStartOf;            /* kept so older calls still work */
 const weekEndOf=ws=>{const b=new Date(ws);b.setDate(b.getDate()+WEEK_DAYS-1);
   return isoDay(b);};
+/* "22–27 Aug" — the long form does not fit a narrow printed column */
+const weekShort=ws=>{
+  const x=new Date(ws), y=new Date(weekEndOf(ws));
+  const m=d=>d.toLocaleDateString('en-GB',{month:'short'});
+  const d=n=>String(n.getDate()).padStart(2,'0');
+  return x.getMonth()===y.getMonth()
+    ? d(x)+'–'+d(y)+' '+m(y)
+    : d(x)+' '+m(x)+' – '+d(y)+' '+m(y);
+};
 const weekLabel=ws=>{
   const a=new Date(ws), b=new Date(weekEndOf(ws));
   const f=d=>d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
@@ -3012,11 +3013,18 @@ function planUniverse(kind){
   for(const p of PLANS){
     if((p.kind||'submission')!==kind)continue;
     for(const it of (PITEMS[p.id]||[])){
-      const r=AB.find(a=>a.id===it.docId)||{};
+      const r=AB.find(a=>a.id===it.docId);
+      /* a document that has since been deleted is no longer part of the
+         programme; without this it printed as a blank row with no name */
+      if(!r){ out.push({skipped:true}); continue; }
       out.push({it,plan:p,doc:r,st:itemState(it,p)});
     }
   }
-  return out;
+  /* the count has to ride on the array that is RETURNED — setting it on `out`
+     and then returning a filtered copy silently threw it away */
+  const kept=out.filter(x=>!x.skipped);
+  kept.dropped=out.length-kept.length;
+  return kept;
 }
 /* count a set of rows into the five buckets the progress bar uses */
 function planTally(rows){
@@ -3071,129 +3079,184 @@ function planAwptReview(rows){
     reworked:docs.filter(r=>(HIST[r.id]||[])
       .filter(h=>h.leg==='HESCO'&&h.status==='RWC').length>0).length};
 }
+/* Every revision a document went through inside the plan week, with the code
+   it came back with. A document with three revisions is three rows; everything
+   that describes the document itself is merged down those rows, the way it
+   would be in a spreadsheet. */
+/* Where the document already stood when the recovery week opened: how many
+   times it had been round before, and the last revision it reached. Without
+   this a first submission and a tenth look identical on the page. */
+function planPrior(x){
+  const a=x.plan.weekStart;
+  const before=(HIST[x.doc.id]||[])
+    .filter(h=>(h.submitted||'')&&h.submitted<a)
+    .sort((m,n)=>m.submitted<n.submitted?-1:m.submitted>n.submitted?1:(m.id||0)-(n.id||0));
+  const last=before.length?before[before.length-1]:null;
+  return {n:before.length, last,
+    /* the answer that revision came back with, in the reviewer's own words */
+    code:last?((last.responded||'')
+      ? (last.status?(MAADEN_GRADE[last.status]?MAADEN_GRADE[last.status].g:last.status):'—')
+      : 'out') : ''};
+}
+function planRevs(x){
+  const p=x.plan, a=p.weekStart, b=weekEndOf(p.weekStart);
+  return (HIST[x.doc.id]||[])
+    .filter(h=>(h.submitted||'')>=a&&(h.submitted||'')<=b)
+    .sort((m,n)=>(m.submitted<n.submitted?-1:m.submitted>n.submitted?1:(m.id||0)-(n.id||0)));
+}
+/* One plain sentence per document: what was asked, what happened, where it is. */
+function planComment(x,revs){
+  const it=x.it, r=x.doc, st=x.st, bits=[];
+  /* name the leg the plan measures: a document can have gone to Maaden this
+     week and still be "not submitted" against a HESCO submission plan */
+  const leg=(x.plan.kind==='review')?'':' to AWPT';
+  if(isHold(r))return 'On hold'+(r.holdNote?' — '+r.holdNote:'')+'; the clock is stopped.';
+  const tgt=it.plannedDate||'';
+  if(st.k==='done'||st.k==='late'){
+    const n=st.days;
+    bits.push('Submitted'+leg+' '+st.sub+(tgt?(n>0?', '+n+' day'+(n===1?'':'s')+' after the '+tgt+' target'
+                                        :n<0?', '+(-n)+' day'+(n===-1?'':'s')+' early'
+                                        :', on the target date'):''));
+  } else if(st.k==='overdue'){
+    bits.push('Not submitted'+leg+' — '+days(tgt,today)+' day'+(days(tgt,today)===1?'':'s')+' past the '+tgt+' target');
+  } else if(st.k==='due'){
+    bits.push('Due '+tgt+', not submitted'+leg+' yet');
+  } else if(st.k==='pending'){ bits.push('Planned for a week that has not started');
+  } else bits.push('No target date set');
+  /* what the reviewer said about the last revision inside the week */
+  const last=revs.length?revs[revs.length-1]:null;
+  if(last){
+    const to=last.leg==='HESCO'?'AWPT':'Maaden';
+    if(!(last.responded||''))bits.push('with '+to+' since '+last.submitted+' ('+days(last.submitted,today)+'d)');
+    else if(last.status)bits.push(to+' returned '+last.rev+' on '+last.responded+
+      ' as '+(MAADEN_GRADE[last.status]?maadenLabel(last.status):last.status));
+    else bits.push(to+' replied on '+last.responded);
+  }
+  /* and where it sits now, in the words of whoever holds it */
+  const court=r.holder||'';
+  if(court==='Closed')bits.push('closed');
+  else if(court)bits.push('now with '+court);
+  return bits.join('; ')+'.';
+}
+/* The document type, read off the number's own type code — the same column the
+   recovery-plan workbook carries. */
+const DOCTYPE={RPT:'Report',DED:'Drawing',GAD:'Drawing',LAD:'Layout',SLD:'Diagram',
+  PID:'Diagram',PFD:'Diagram',STD:'Standard detail',CAL:'Calculation',DAT:'Datasheet',
+  SPC:'Specification',CRT:'Design criteria',LST:'List',BOM:'BOQ',BOQ:'BOQ',MOD:'Model',
+  PLN:'Plan',PRO:'Procedure',MOM:'Minutes'};
+function docType(num){
+  const m=/-([A-Z]{3})-AWPT/.exec(num||'')||/-([A-Z]{3})-[0-9]/.exec(num||'');
+  return m?(DOCTYPE[m[1]]||m[1]):'';
+}
+/* Where a document stands against the date HESCO committed to in the plan. */
+function planLine(x){
+  const r=x.doc, it=x.it;
+  const cyc=(HIST[r.id]||[]).filter(h=>h.leg==='HESCO'&&(h.submitted||''))
+    .sort((a,b)=>a.submitted<b.submitted?-1:a.submitted>b.submitted?1:(a.id||0)-(b.id||0));
+  const last=cyc.length?cyc[cyc.length-1]:null;
+  const committed=it.plannedDate||'';
+  /* late against the committed date: by the day it actually went, or by today
+     if it still has not gone */
+  let late='–';
+  if(committed){
+    const gone=x.st.sub||'';
+    if(gone) late=days(committed,gone)>0?days(committed,gone):0;
+    else if(committed<today) late=days(committed,today);
+    else late='–';
+  }
+  /* what AWPT said about that last revision — the whole point of the column */
+  /* "awaiting" did not say awaiting what. The dashboard calls this state
+     "With AWPT now"; the report says the same thing in the space it has. */
+  const lastCode=!last ? ''
+    : ((last.responded||'') ? (last.status||'—') : 'with AWPT');
+  return {cyc, last, lastCode,
+    lastRev:last?(last.rev||'?'):'Not submitted',
+    cycles:cyc.length||'–',
+    late, committed,
+    issued:last?(last.submitted||'–'):'–',
+    returned:last&&(last.responded||'')?last.responded:'–'};
+}
+/* Every revision the document has been through, as a V0 / V1 / V2 … grid with
+   the pair of dates under each — the shape of the Review History sheet. */
+function reviewGrid(rows){
+  const per=rows.map(x=>{
+    const cyc=(HIST[x.doc.id]||[]).filter(h=>(h.submitted||''))
+      .sort((a,b)=>a.submitted<b.submitted?-1:a.submitted>b.submitted?1:(a.id||0)-(b.id||0));
+    return {x,cyc};
+  });
+  const wide=per.reduce((m,p)=>Math.max(m,p.cyc.length),0);
+  return {per,wide:Math.max(1,wide)};
+}
 function buildPlanAnalysis(kind){
   const rows=planUniverse(kind);
   const T=planTally(rows), A=planAwptReview(rows);
   const weeks=PLANS.filter(p=>(p.kind||'submission')===kind)
     .slice().sort((a,b)=>a.weekStart<b.weekStart?-1:1);
   const stamp=new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
-  const verb=kind==='review'?'answered':'submitted to AWPT';
-  const title=kind==='review'?'AWPT Review Plan':'HESCO Submission Plan';
+  const title=kind==='review'?'AWPT Review Plan':'Recovery Plan';
   const kpi=(l,v)=>`<div class="rk"><b>${v}</b><span>${l}</span></div>`;
-  const sec=t=>`<div class="rsec">${esc(t)}</div>`;
-  const pcell=t=>`<td class="c-pct">${t.pct}%</td>`;
-  const trow=(label,t,extra)=>`<tr><td class="c-grp">${esc(label)}</td>
-    <td class="c-num">${t.n}</td><td class="c-num">${t.done}</td>
-    <td class="c-num">${t.onTime}</td><td class="c-num">${t.late}</td>
-    <td class="c-num">${t.overdue}</td><td class="c-num">${t.open}</td>
-    ${pcell(t)}${extra||''}</tr>`;
-  const gh=extra=>`<thead><tr><th class="c-grp">${esc(extra?extra[0]:'')}</th>
-    <th class="c-num">Planned</th><th class="c-num">Done</th><th class="c-num">On time</th>
-    <th class="c-num">Late</th><th class="c-num">Overdue</th><th class="c-num">To come</th>
-    <th class="c-pct">%</th>${extra&&extra[1]?extra[1]:''}</tr></thead>`;
+  /* how many DOCUMENTS stand at this AWPT answer today */
+  const stAt=k=>{const r=A.states.find(x=>x.k===k);return r?r.n:0;};
 
-  /* every item still open past its target date, worst first */
-  const slipping=rows.filter(x=>x.st.k==='overdue')
-    .sort((a,b)=>days(b.it.plannedDate,today)-days(a.it.plannedDate,today));
-  /* everything delivered after its target date, worst first */
-  const arrivedLate=rows.filter(x=>x.st.k==='late')
-    .sort((a,b)=>days(b.it.plannedDate,b.st.sub)-days(a.it.plannedDate,a.st.sub));
+  /* oldest committed date first */
+  const ord=rows.slice().sort((a,b)=>{
+    const A1=a.it.plannedDate||'9999', B1=b.it.plannedDate||'9999';
+    if(A1!==B1)return A1<B1?-1:1;
+    return (a.doc.ref||'')<(b.doc.ref||'')?-1:1;
+  });
+
+  const SHORT={done:'Submitted',late:'Submitted late',overdue:'Overdue',
+               due:'Due',nodate:'No date',pending:'Planned'};
+  let n=0;
+  const body=ord.map(x=>{
+    n++; const L=planLine(x), r=x.doc, st=x.st;
+    const lateCls=L.late==='–'?'':(L.late>0?'p-over':'p-ok');
+    return `<tr>
+      <td class="c-idx">${n}</td>
+      <td class="c-ref">${esc((r.docNumber||'').split('\n')[0]||r.ref||'—')}</td>
+      <td class="c-title">${esc(r.title||'')}</td>
+      <td class="c-discipline">${esc(PRINT_DISC[r.discipline]||r.discipline||'')}</td>
+      <td class="c-plannedDate">${esc(L.committed||'—')}</td>
+      <td class="c-hSent">${esc(st.sub||'—')}</td>
+      <td class="c-hOut">${esc(L.lastRev)}${L.lastCode
+        ? ' <b class="'+(L.lastCode==='RNC'?'p-ok':L.lastCode==='with AWPT'?'p-wait':'p-over')+
+          '">'+esc(L.lastCode)+'</b>' : ''}</td>
+      <td class="c-hDays">${esc(String(L.cycles))}</td>
+      <td class="c-hDays ${lateCls}">${L.late==='–'?'—':L.late}</td>
+      <td class="c-status">${esc(SHORT[st.k]||st.k)}</td></tr>`;
+  }).join('');
 
   return `<div class="rhead">
-      <div class="rt"><h1>Taif Ar Rjum Package B — ${esc(title)} Analysis</h1>
-        <div class="rs">All weeks to date · Sub-Contract 111051/2026/0022</div></div>
-      <div class="rd">${stamp}<br><span>${weeks.length} week${weeks.length===1?'':'s'} · ${
-        T.n} planned item${T.n===1?'':'s'}</span></div></div>
-
-    <div class="rfilt"><b>Scope:</b> every ${kind==='review'?'review':'submission'} week on record${
-      weeks.length?', '+esc(weekLabel(weeks[0].weekStart))+' to '+esc(weekLabel(weeks[weeks.length-1].weekStart)):''
-      }. Progress is counted the moment the document is ${esc(verb)}; work already
-      done before a week was written is excluded from that week's score.</div>
-
+      <div class="rt"><h1>Taif Ar Rjum Package B — ${esc(title)}</h1>
+        <div class="rs">Delayed design deliverables · Sub-Contract 111051/2026/0022</div></div>
+      <div class="rd">${stamp}<br><span>${T.n} deliverable${T.n===1?'':'s'}</span></div>
+    </div>
+    <div class="rfilt"><b>Scope:</b> every ${kind==='review'?'review':'submission'} week on
+      record${weeks.length?', '+esc(weekLabel(weeks[0].weekStart))+' to '+
+      esc(weekLabel(weeks[weeks.length-1].weekStart)):''}, oldest committed date first.
+      Across every revision these documents have ever been through, AWPT has
+      answered ${A.answered} time${A.answered===1?'':'s'} — ${A.rwc} with comments
+      and ${A.rnc} with none.</div>
     <div class="rkpis">${
-      kpi('Planned',T.n)+kpi('Delivered',T.done)+kpi('Delivered',T.pct+'%')+
+      kpi('Tracked',T.n)+kpi('Submitted',T.done)+kpi('Submitted',T.pct+'%')+
       kpi('On time',T.onTime)+kpi('Late',T.late)+kpi('Overdue now',T.overdue)+
       kpi('Still to come',T.open)+
-      kpi('Avg days late',T.avgSlip)+kpi('Longest overdue',T.worstAge+'d')}</div>
-
-    ${sec('1 · Week by week')}
-    <table class="rtbl">${gh(['Week','<th class="c-num">Avg late</th><th class="c-num">Worst</th>'])}
-      <tbody>${weeks.map(p=>{
-        const t=planTally(rows.filter(x=>x.plan.id===p.id));
-        return trow(weekLabel(p.weekStart)+(p.name?' · '+p.name:''),t,
-          `<td class="c-num">${t.avgSlip||'—'}</td><td class="c-num">${t.worstSlip||'—'}</td>`);
-      }).join('')}
-      <tr class="rtot">${trow('All weeks',T,
-        `<td class="c-num">${T.avgSlip||'—'}</td><td class="c-num">${T.worstSlip||'—'}</td>`)
-        .replace(/^<tr>|<\/tr>$/g,'')}</tr></tbody></table>
-
-    ${sec('2 · By discipline')}
-    <table class="rtbl">${gh(['Discipline',''])}
-      <tbody>${planGroup(rows,x=>PRINT_DISC[x.doc.discipline]||x.doc.discipline||'—')
-        .map(g=>trow(g.k,g.t)).join('')}</tbody></table>
-
-    ${sec('3 · AWPT review of these documents')}
-    <div class="rnote2">Where the ${A.docs} document${A.docs===1?'':'s'} on these
-      weeks stand with AWPT today. A document counted once, however many weeks
-      committed it.</div>
-    <table class="rtbl"><thead><tr><th class="c-grp">AWPT outcome</th>
-      <th class="c-title">What it means</th><th class="c-num">Documents</th>
-      <th class="c-pct">Share</th></tr></thead><tbody>
-      ${A.states.map(st=>`<tr><td class="c-grp"><b>${esc(st.t)}</b>${
-          ['RNC','RWC'].includes(st.k)?' <span class="rcode">'+st.k+'</span>':''}</td>
-        <td class="c-title">${esc(st.s)}</td>
-        <td class="c-num">${st.n}</td>
-        <td class="c-pct">${A.docs?Math.round(st.n/A.docs*100):0}%</td></tr>`).join('')}
-      <tr class="rtot"><td class="c-grp">All</td><td class="c-title"></td>
-        <td class="c-num">${A.docs}</td><td class="c-pct">100%</td></tr></tbody></table>
-
-    <div class="rnote2" style="margin-top:6pt">Every AWPT review cycle those
-      documents have been through, including earlier revisions.</div>
-    <div class="rkpis">${
-      kpi('Review cycles',A.cycles)+kpi('Answered',A.answered)+
-      kpi('RNC — no comments',A.rnc)+kpi('RWC — with comments',A.rwc)+
-      kpi('Awaiting AWPT',A.open)+
-      kpi('Avg days',A.avg==null?'—':A.avg)+kpi('Median days',A.med==null?'—':A.med)+
-      kpi('Longest review',A.worst==null?'—':A.worst+'d')+
-      kpi('Waiting longest',A.waiting==null?'—':A.waiting+'d')}</div>
-    <div class="rnote2">${A.reworked} of ${A.docs} ${A.reworked===1?'has':'have'}
-      been returned with comments at least once${
-        A.answered?'. Of the '+A.answered+' cycles AWPT has answered, '+
-        Math.round(A.rnc/A.answered*100)+'% came back with no comments (RNC) and '+
-        Math.round(A.rwc/A.answered*100)+'% with comments to resolve (RWC)':''}.</div>
-
-    ${sec('4 · Overdue now — '+slipping.length+' item'+(slipping.length===1?'':'s'))}
-    ${slipping.length?`<table class="rtbl rdet"><thead><tr><th class="c-idx">#</th>
-      <th class="c-ref">Document number</th><th class="c-title">Submittal name</th>
-      <th class="c-discipline">Discipline</th>
-      <th class="c-plannedDate">Target</th><th class="c-num">Days over</th>
-      <th class="c-grp">Week</th></tr></thead><tbody>
-      ${slipping.map((x,i)=>`<tr><td class="c-idx">${i+1}</td>
-        <td class="c-ref">${esc(x.doc.ref||'—')}</td>
-        <td class="c-title">${esc(x.doc.title||'')}</td>
-        <td class="c-discipline">${esc(PRINT_DISC[x.doc.discipline]||x.doc.discipline||'')}</td>
-        <td class="c-plannedDate">${esc(x.it.plannedDate||'—')}</td>
-        <td class="c-num"><b>${days(x.it.plannedDate,today)}</b></td>
-        <td class="c-grp">${esc(weekLabel(x.plan.weekStart))}</td></tr>`).join('')}
-      </tbody></table>`:'<div class="rnote">Nothing is past its target date.</div>'}
-
-    ${sec('5 · Delivered late — '+arrivedLate.length+' item'+(arrivedLate.length===1?'':'s'))}
-    ${arrivedLate.length?`<table class="rtbl rdet late"><thead><tr><th class="c-idx">#</th>
-      <th class="c-ref">Document number</th><th class="c-title">Submittal name</th>
-      <th class="c-discipline">Discipline</th>
-      <th class="c-plannedDate">Target</th><th class="c-plannedDate">Actual</th>
-      <th class="c-num">Days late</th><th class="c-grp">Week</th></tr></thead><tbody>
-      ${arrivedLate.map((x,i)=>`<tr><td class="c-idx">${i+1}</td>
-        <td class="c-ref">${esc(x.doc.ref||'—')}</td>
-        <td class="c-title">${esc(x.doc.title||'')}</td>
-        <td class="c-discipline">${esc(PRINT_DISC[x.doc.discipline]||x.doc.discipline||'')}</td>
-        <td class="c-plannedDate">${esc(x.it.plannedDate||'—')}</td>
-        <td class="c-plannedDate">${esc(x.st.sub||'—')}</td>
-        <td class="c-num"><b>${days(x.it.plannedDate,x.st.sub)}</b></td>
-        <td class="c-grp">${esc(weekLabel(x.plan.weekStart))}</td></tr>`).join('')}
-      </tbody></table>`:'<div class="rnote">Everything delivered so far arrived on or before its target date.</div>'}
-
-    <div class="rfoot">Taif Ar Rjum LOD — ${esc(title)} Analysis · all weeks · ${stamp}${
+      /* Document counts, like every other card in this row. These used to count
+         CYCLES over the whole history, so "RWC 56" sat beside "Tracked 45" and
+         read as though more documents had come back than existed. */
+      kpi('Cleared — RNC',stAt('RNC'))+kpi('With comments — RWC',stAt('RWC'))}</div>
+    <table class="rtbl"><thead><tr>
+      <th class="c-idx">#</th><th class="c-ref">Document number</th>
+      <th class="c-title">Submittal name</th><th class="c-discipline">Discipline</th>
+      <th class="c-plannedDate">Committed</th>
+      <th class="c-hSent" title="The submission that counts against this plan — an earlier one does not">Submitted</th>
+      <th class="c-hOut" title="The latest revision issued to AWPT and the code it came back with — RNC reviewed with no comments, RWC returned with comments, or still with AWPT if there is no answer yet">Last rev · code</th><th class="c-hDays">Cycles</th>
+      <th class="c-hDays">Days late</th><th class="c-status">Progress</th>
+    </tr></thead><tbody>${body}</tbody></table>
+    ${rows.dropped?`<div class="rnote">${rows.dropped} planned item${
+      rows.dropped===1?' refers to a document that has':'s refer to documents that have'
+      } since been deleted, and ${rows.dropped===1?'is':'are'} left out.</div>`:''}
+    <div class="rfoot">Taif Ar Rjum LOD — ${esc(title)} · ${stamp}${
       USER?' · issued by '+esc(USER.name):''}</div>`;
 }
 async function exportPlanAnalysisPDF(kind){
@@ -3208,12 +3271,13 @@ async function exportPlanAnalysisPDF(kind){
   let root=document.getElementById('printroot');
   if(!root){root=document.createElement('div');root.id='printroot';document.body.appendChild(root);}
   root.innerHTML=buildPlanAnalysis(kind);
-  document.body.classList.add('printing','upright');
-  const done=()=>{document.body.classList.remove('printing','upright');
+  /* fourteen columns need the wide page */
+  document.body.classList.add('printing');
+  const done=()=>{document.body.classList.remove('printing');
     window.removeEventListener('afterprint',done);};
   window.addEventListener('afterprint',done);
   setTimeout(()=>{window.print();setTimeout(done,1500);},60);
-  toast(weeks.length+' weeks, '+n+' items — set Portrait, then Save as PDF');
+  toast(weeks.length+' weeks, '+n+' items — set Landscape, then Save as PDF');
 }
 
 function exportPlanPDF(planId){
@@ -4034,6 +4098,9 @@ function legCourt(r,leg){
    the cycles the Client's submissions do grade). Never show it as a plain fact. */
 const INFERRED='inferred from resubmission';
 const isInferred=c=>!!(c&&(c.source||'')===INFERRED);
+/* A code somebody typed outranks the RNC/RWC rule and is left alone by it.
+   Clearing the code hands the cycle back to the rule. */
+const isHandSet=c=>!!(c&&c.statusLocked);
 /* whole percentages that total exactly 100 — largest remainder, so a card row
    never reads 99% or 101% */
 function pct100(ns){
@@ -5695,7 +5762,7 @@ function historyHTML(r){
             <div class="hdates"><b>${esc(x.submitted)||'—'}</b><span>→</span>
               <b>${x.responded?esc(x.responded):'<span class="hint">awaiting</span>'}</b></div>
             ${x.status?`<span class="pstate st-due">${esc(x.status)}${
-              isInferred(x)?' ~':''}</span>`:''}
+              isInferred(x)?' ~':''}${isHandSet(x)?' ✓':''}</span>`:''}
           </div>
           <div class="hdays ${out?'out':''}">${x.days!=null?x.days+'d'
             :(out?days(x.submitted,today)+'d':'—')}<i>${out?'so far':'days'}</i></div>
@@ -5710,6 +5777,8 @@ function historyHTML(r){
         <td class="mono">${esc(x.responded)||'<span class="hint">awaiting</span>'}</td>
         <td>${x.status?esc(x.status)+(isInferred(x)?
           ' <span class="hint" title="Worked out from the resubmission pattern, not recorded">~ inferred</span>':'')
+          +(isHandSet(x)?
+          ' <span class="lockmark" title="Set by hand — the RNC/RWC rule will not change it. Clear the code to hand it back to the rule.">✓ yours</span>':'')
           :'<span class="hint">—</span>'}</td>
         <td style="text-align:right" class="mono">${x.days!=null?x.days:
           (x.submitted&&!x.responded?days(x.submitted,today)+'<span class="hint">+</span>':'—')}</td>
