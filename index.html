@@ -1270,7 +1270,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-31 · v67';
+const BUILD='LOD 2026-08-31 · v68';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -4205,15 +4205,85 @@ function peopleHTML(list){
     <div class="pcount hint" style="margin-top:9px">${seen} of ${list.length} have used it at least once.
       Updated whenever someone opens the app, not only when they type a password.</div>`;
 }
+/* Adding somebody takes three rows that must agree — an account they can
+   authenticate with, a project row that lets them past the door, and a name in
+   the sign-in list. Written by hand they drift apart, and each way of getting
+   it wrong fails with its own unhelpful message. lod_add_person writes all
+   three in one transaction, so this dialog only has to ask the four questions. */
+function newPersonBox(after){
+  const pw='ArRjum'+new Date().getFullYear()+'!';
+  msgBox('Add someone to the project','',
+    `<div class="hint" style="margin-bottom:10px">They get an account, access to
+       the project, and their name on the sign-in list — all three at once.</div>
+     <label class="fl">Full name</label>
+     <input class="f" id="npname" placeholder="Emad H. Ali" autocomplete="off">
+     <label class="fl" style="margin-top:8px">Work email</label>
+     <input class="f" id="npmail" placeholder="name@alkhorayef.com" autocomplete="off">
+     <label class="fl" style="margin-top:8px">Access</label>
+     <select class="f" id="nprole">
+       <option value="editor" selected>Editor — can change the register</option>
+       <option value="viewer">Viewer — can look but not change</option>
+       <option value="admin">Admin — can also manage people</option>
+     </select>
+     <label class="fl" style="margin-top:8px">Starting password</label>
+     <input class="f" id="nppw" value="${esc(pw)}" autocomplete="off">
+     <div class="hint" style="margin-top:6px">Hand this to them and ask them to
+       change it. At least 8 characters.</div>
+     <div id="nperr" style="margin-top:8px"></div>`,
+    [['Cancel',null,''],['Add',async()=>{},'primary']]);
+  /* msgBox closes on any button, so the work is wired by hand to keep the box
+     open while the server answers */
+  const m=document.getElementById('msg');
+  const btn=[...m.querySelectorAll('.acts .btn')].pop();
+  const err=t=>{const e=m.querySelector('[id="nperr"]');
+    if(e)e.innerHTML='<span style="color:var(--critical);font-size:12px">'+esc(t)+'</span>';};
+  btn.onclick=async()=>{
+    const name=(m.querySelector('[id="npname"]').value||'').trim();
+    const email=(m.querySelector('[id="npmail"]').value||'').trim();
+    const role=m.querySelector('[id="nprole"]').value;
+    const pass=(m.querySelector('[id="nppw"]').value||'').trim();
+    if(!name)return err('Enter their name.');
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))return err('That does not look like an email address.');
+    if(pass.length<8)return err('The password needs at least 8 characters.');
+    btn.disabled=true; const label=btn.textContent; btn.textContent='Adding…';
+    try{
+      const r=await api('rpc/lod_add_person',{method:'POST',
+        body:JSON.stringify({p_email:email,p_name:name,p_role:role,p_password:pass})});
+      closeMsg();
+      const what=(r&&r.action==='completed')?'already had an account — it is now on the project'
+                :(r&&r.action==='updated')?'was already here — details updated'
+                :'added';
+      toast(name+' '+what);
+      if(after)await after();
+    }catch(e){
+      /* PostgREST wraps the message the function raised */
+      let msg=String(e.message||'');
+      const j=msg.match(/\{[\s\S]*\}$/);
+      if(j){ try{ msg=JSON.parse(j[0]).message||msg; }catch(_){} }
+      err(msg.replace(/^\d{3}\s*/,''));
+      btn.disabled=false; btn.textContent=label;
+    }
+  };
+  setTimeout(()=>{const i=m.querySelector('[id="npname"]');if(i)i.focus();},40);
+}
 async function openUsers(){
   if(!canAdmin())return toast('Only an administrator can see this');
-  const w=createWindow('usr','People','who is on the project',null,null,640,440);
+  const w=createWindow('usr','People','who is on the project',null,null,640,470);
   w.body.innerHTML='<div class="dash"><div class="panel"><div class="hint">Loading…</div></div></div>';
-  const list=await loadPeople();
-  w.body.innerHTML=`<div class="dash"><div class="panel">${peopleHTML(list)}
-    <div class="hint" style="margin-top:12px">
-      <b>Admin</b> manages people. <b>Editor</b> changes the register.
-      <b>Viewer</b> can look but not change.</div></div></div>`;
+  const draw=async()=>{
+    const list=await loadPeople();
+    w.body.innerHTML=`<div class="dash"><div class="panel">
+      <div class="planbar" style="margin-bottom:10px">
+        <button class="btn primary" id="pnew2">Add someone</button>
+        <span class="hint">${list.length} on the project</span></div>
+      ${peopleHTML(list)}
+      <div class="hint" style="margin-top:12px">
+        <b>Admin</b> manages people. <b>Editor</b> changes the register.
+        <b>Viewer</b> can look but not change.</div></div></div>`;
+    const b=w.body.querySelector('[id="pnew2"]');
+    if(b)b.onclick=()=>newPersonBox(draw);
+  };
+  await draw();
 }
 const NTAG={mention:['Mention','#7c5cd6'],change:['Edit','#2a78d6'],
   submission:['Submission','#0f9d58'],comment:['Comment','#7c5cd6']};
@@ -4839,7 +4909,8 @@ async function mobPeople(){
           <div style="text-align:right;font-size:11.5px;${w.cls==='never'?'color:var(--muted)':
             w.cls==='now'?'color:var(--goodtext);font-weight:600':''}">${esc(w.t)}</div></div>`;}).join('')
     : '<div class="empty">No one to show.</div>',
-    [['Close',null,'primary']]);
+    canAdmin()?[['Close',null,''],['Add someone',()=>newPersonBox(mobPeople),'primary']]
+              :[['Close',null,'primary']]);
 }
 function mobEdit(k){
   const c=COLBY[k], r=AB.find(x=>x.id===MOB.id); if(!c||!r)return;
