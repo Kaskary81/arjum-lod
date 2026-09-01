@@ -588,6 +588,10 @@ body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent)
 @media screen{ body.printing #printroot{display:none} }
 @media print{
   @page{ size:A4 landscape; margin:10mm 8mm; }
+  /* The analysis is a page of figures, not a wide register, so it prints
+     upright with a proper margin instead of edge-to-edge landscape. */
+  @page upright{ size:A4 portrait; margin:15mm 14mm; }
+  body.upright #printroot{ page:upright }
   html,body{height:auto!important;overflow:visible!important;background:#fff!important;
     color:#000!important}
   body>*{display:none!important}
@@ -605,6 +609,11 @@ body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent)
     padding:3pt 6pt;margin-bottom:5pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .rkpis{display:flex;gap:3.5pt;margin-bottom:6pt}
   .rk{flex:1;border:.4pt solid #c3ced9;border-radius:2pt;padding:3pt 2pt;text-align:center}
+  /* Nine figures side by side are unreadable on the upright page, so there they
+     wrap onto a fixed grid — a flex wrap would stretch whatever landed on the
+     last row into odd wide boxes. The landscape register keeps its single row. */
+  body.upright .rkpis{display:grid;grid-template-columns:repeat(5,1fr)}
+  body.upright .rk{flex:none}
   .rk b{display:block;font-size:11pt;color:#12304f;line-height:1.05}
   .rk span{font-size:5.6pt;text-transform:uppercase;letter-spacing:.3pt;color:#666;
     display:block;line-height:1.15;margin-top:1pt}
@@ -641,7 +650,29 @@ body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent)
     padding-bottom:2pt;border-bottom:.8pt solid #12304f;page-break-after:avoid}
   .rsec:first-of-type{margin-top:4pt}
   .rnote{font-size:7.4pt;color:#555;font-style:italic;padding:3pt 0}
+  .rnote2{font-size:7pt;color:#555;margin:0 0 4pt}
+  .rcode{font-family:var(--mono);font-size:6pt;background:#12304f!important;color:#fff!important;
+    border-radius:2pt;padding:.5pt 3pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   table.rtbl .c-grp{width:26%}
+  /* The analysis detail tables carry a different set of columns from the
+     register, so they get their own widths. Left on the register's, the two
+     dates in the late table overlap and "Mechanical" breaks mid-word. Each
+     set totals 100%. */
+  #printroot table.rdet .c-idx{width:4%}
+  #printroot table.rdet .c-ref{width:13%}
+  #printroot table.rdet .c-title{width:30%}
+  #printroot table.rdet .c-discipline{width:11%;white-space:nowrap}
+  #printroot table.rdet .c-plannedDate{width:12%;white-space:nowrap;padding-right:5pt}
+  #printroot table.rdet .c-num{width:8%}
+  #printroot table.rdet .c-grp{width:22%}
+  /* the late table carries two dates side by side, so the name column gives way
+     rather than the dates overlapping */
+  #printroot table.rdet.late .c-ref{width:12%}
+  #printroot table.rdet.late .c-title{width:20%}
+  #printroot table.rdet.late .c-discipline{width:10%}
+  #printroot table.rdet.late .c-plannedDate{width:12%}
+  #printroot table.rdet.late .c-num{width:8%}
+  #printroot table.rdet.late .c-grp{width:22%}
   table.rtbl .c-num{width:7%;text-align:center;font-variant-numeric:tabular-nums}
   table.rtbl .c-pct{width:7%;text-align:center;font-weight:700;
     font-variant-numeric:tabular-nums}
@@ -1270,7 +1301,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-31 · v68';
+const BUILD='LOD 2026-08-31 · v69';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2972,9 +3003,38 @@ function planGroup(rows,keyOf){
   return [...m.entries()].map(([k,v])=>({k,t:planTally(v)}))
     .sort((a,b)=>(b.t.overdue-a.t.overdue)||(b.t.late-a.t.late)||(b.t.n-a.t.n));
 }
+/* What AWPT actually said about the documents these weeks committed.
+   Counted per DOCUMENT, deduplicated — a document carried across two weeks is
+   one document, not two — and read from the same leg state the AWPT register
+   and dashboard use, so the three can never disagree. */
+function planAwptReview(rows){
+  const seen=new Map();
+  for(const x of rows) if(x.doc&&x.doc.id!=null&&!seen.has(x.doc.id))seen.set(x.doc.id,x.doc);
+  const docs=[...seen.values()];
+  const states=LEGSTATE('hesco').map(st=>({
+    k:st.k, t:st.t, s:st.s, n:docs.filter(r=>legOf(r,'hesco')===st.k).length}));
+  /* every AWPT cycle those documents have been through */
+  const cyc=[];
+  docs.forEach(r=>(HIST[r.id]||[]).filter(h=>h.leg==='HESCO').forEach(h=>cyc.push(h)));
+  const answered=cyc.filter(h=>(h.responded||'').trim()!=='');
+  const closed=answered.filter(h=>h.days!=null&&h.days>=0).map(h=>h.days).sort((a,b)=>a-b);
+  const open=cyc.filter(h=>(h.submitted||'').trim()!==''&&!(h.responded||'').trim());
+  const waiting=open.map(h=>days(h.submitted,today)).filter(n=>n>=0);
+  return {docs:docs.length, states,
+    rnc:answered.filter(h=>h.status==='RNC').length,
+    rwc:answered.filter(h=>h.status==='RWC').length,
+    cycles:cyc.length, answered:answered.length, open:open.length,
+    avg:closed.length?Math.round(closed.reduce((a,b)=>a+b,0)/closed.length*10)/10:null,
+    med:closed.length?closed[Math.floor(closed.length/2)]:null,
+    worst:closed.length?closed[closed.length-1]:null,
+    waiting:waiting.length?Math.max(...waiting):null,
+    /* how many attempts each document needed before AWPT cleared it */
+    reworked:docs.filter(r=>(HIST[r.id]||[])
+      .filter(h=>h.leg==='HESCO'&&h.status==='RWC').length>0).length};
+}
 function buildPlanAnalysis(kind){
   const rows=planUniverse(kind);
-  const T=planTally(rows);
+  const T=planTally(rows), A=planAwptReview(rows);
   const weeks=PLANS.filter(p=>(p.kind||'submission')===kind)
     .slice().sort((a,b)=>a.weekStart<b.weekStart?-1:1);
   const stamp=new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
@@ -3028,43 +3088,66 @@ function buildPlanAnalysis(kind){
         `<td class="c-num">${T.avgSlip||'—'}</td><td class="c-num">${T.worstSlip||'—'}</td>`)
         .replace(/^<tr>|<\/tr>$/g,'')}</tr></tbody></table>
 
-    ${sec('2 · By responsible person')}
-    <table class="rtbl">${gh(['Responsible',''])}
-      <tbody>${planGroup(rows,x=>assigneeName(x.it.assigneeId))
-        .map(g=>trow(g.k,g.t)).join('')}</tbody></table>
-
-    ${sec('3 · By discipline')}
+    ${sec('2 · By discipline')}
     <table class="rtbl">${gh(['Discipline',''])}
       <tbody>${planGroup(rows,x=>PRINT_DISC[x.doc.discipline]||x.doc.discipline||'—')
         .map(g=>trow(g.k,g.t)).join('')}</tbody></table>
 
+    ${sec('3 · AWPT review of these documents')}
+    <div class="rnote2">Where the ${A.docs} document${A.docs===1?'':'s'} on these
+      weeks stand with AWPT today. A document counted once, however many weeks
+      committed it.</div>
+    <table class="rtbl"><thead><tr><th class="c-grp">AWPT outcome</th>
+      <th class="c-title">What it means</th><th class="c-num">Documents</th>
+      <th class="c-pct">Share</th></tr></thead><tbody>
+      ${A.states.map(st=>`<tr><td class="c-grp"><b>${esc(st.t)}</b>${
+          ['RNC','RWC'].includes(st.k)?' <span class="rcode">'+st.k+'</span>':''}</td>
+        <td class="c-title">${esc(st.s)}</td>
+        <td class="c-num">${st.n}</td>
+        <td class="c-pct">${A.docs?Math.round(st.n/A.docs*100):0}%</td></tr>`).join('')}
+      <tr class="rtot"><td class="c-grp">All</td><td class="c-title"></td>
+        <td class="c-num">${A.docs}</td><td class="c-pct">100%</td></tr></tbody></table>
+
+    <div class="rnote2" style="margin-top:6pt">Every AWPT review cycle those
+      documents have been through, including earlier revisions.</div>
+    <div class="rkpis">${
+      kpi('Review cycles',A.cycles)+kpi('Answered',A.answered)+
+      kpi('RNC — no comments',A.rnc)+kpi('RWC — with comments',A.rwc)+
+      kpi('Awaiting AWPT',A.open)+
+      kpi('Avg days',A.avg==null?'—':A.avg)+kpi('Median days',A.med==null?'—':A.med)+
+      kpi('Longest review',A.worst==null?'—':A.worst+'d')+
+      kpi('Waiting longest',A.waiting==null?'—':A.waiting+'d')}</div>
+    <div class="rnote2">${A.reworked} of ${A.docs} ${A.reworked===1?'has':'have'}
+      been returned with comments at least once${
+        A.answered?'. Of the '+A.answered+' cycles AWPT has answered, '+
+        Math.round(A.rnc/A.answered*100)+'% came back with no comments (RNC) and '+
+        Math.round(A.rwc/A.answered*100)+'% with comments to resolve (RWC)':''}.</div>
+
     ${sec('4 · Overdue now — '+slipping.length+' item'+(slipping.length===1?'':'s'))}
-    ${slipping.length?`<table class="rtbl"><thead><tr><th class="c-idx">#</th>
+    ${slipping.length?`<table class="rtbl rdet"><thead><tr><th class="c-idx">#</th>
       <th class="c-ref">Document number</th><th class="c-title">Submittal name</th>
-      <th class="c-discipline">Discipline</th><th class="c-status">Responsible</th>
+      <th class="c-discipline">Discipline</th>
       <th class="c-plannedDate">Target</th><th class="c-num">Days over</th>
       <th class="c-grp">Week</th></tr></thead><tbody>
       ${slipping.map((x,i)=>`<tr><td class="c-idx">${i+1}</td>
         <td class="c-ref">${esc(x.doc.ref||'—')}</td>
         <td class="c-title">${esc(x.doc.title||'')}</td>
         <td class="c-discipline">${esc(PRINT_DISC[x.doc.discipline]||x.doc.discipline||'')}</td>
-        <td class="c-status" style="text-align:left;font-weight:400">${esc(assigneeName(x.it.assigneeId))}</td>
         <td class="c-plannedDate">${esc(x.it.plannedDate||'—')}</td>
         <td class="c-num"><b>${days(x.it.plannedDate,today)}</b></td>
         <td class="c-grp">${esc(weekLabel(x.plan.weekStart))}</td></tr>`).join('')}
       </tbody></table>`:'<div class="rnote">Nothing is past its target date.</div>'}
 
     ${sec('5 · Delivered late — '+arrivedLate.length+' item'+(arrivedLate.length===1?'':'s'))}
-    ${arrivedLate.length?`<table class="rtbl"><thead><tr><th class="c-idx">#</th>
+    ${arrivedLate.length?`<table class="rtbl rdet late"><thead><tr><th class="c-idx">#</th>
       <th class="c-ref">Document number</th><th class="c-title">Submittal name</th>
-      <th class="c-discipline">Discipline</th><th class="c-status">Responsible</th>
+      <th class="c-discipline">Discipline</th>
       <th class="c-plannedDate">Target</th><th class="c-plannedDate">Actual</th>
       <th class="c-num">Days late</th><th class="c-grp">Week</th></tr></thead><tbody>
       ${arrivedLate.map((x,i)=>`<tr><td class="c-idx">${i+1}</td>
         <td class="c-ref">${esc(x.doc.ref||'—')}</td>
         <td class="c-title">${esc(x.doc.title||'')}</td>
         <td class="c-discipline">${esc(PRINT_DISC[x.doc.discipline]||x.doc.discipline||'')}</td>
-        <td class="c-status" style="text-align:left;font-weight:400">${esc(assigneeName(x.it.assigneeId))}</td>
         <td class="c-plannedDate">${esc(x.it.plannedDate||'—')}</td>
         <td class="c-plannedDate">${esc(x.st.sub||'—')}</td>
         <td class="c-num"><b>${days(x.it.plannedDate,x.st.sub)}</b></td>
@@ -3086,11 +3169,12 @@ async function exportPlanAnalysisPDF(kind){
   let root=document.getElementById('printroot');
   if(!root){root=document.createElement('div');root.id='printroot';document.body.appendChild(root);}
   root.innerHTML=buildPlanAnalysis(kind);
-  document.body.classList.add('printing');
-  const done=()=>{document.body.classList.remove('printing');window.removeEventListener('afterprint',done);};
+  document.body.classList.add('printing','upright');
+  const done=()=>{document.body.classList.remove('printing','upright');
+    window.removeEventListener('afterprint',done);};
   window.addEventListener('afterprint',done);
   setTimeout(()=>{window.print();setTimeout(done,1500);},60);
-  toast(weeks.length+' weeks, '+n+' items — set Landscape, then Save as PDF');
+  toast(weeks.length+' weeks, '+n+' items — set Portrait, then Save as PDF');
 }
 
 function exportPlanPDF(planId){
