@@ -684,6 +684,14 @@ body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent)
   table.rtbl tbody tr:nth-child(even) td{background:#f4f6f8;
     -webkit-print-color-adjust:exact;print-color-adjust:exact}
   /* widths total 100% */
+  /* the group band: one line that names the state and how many are in it */
+  table.rtbl tr.grp td{background:#e7edf3!important;border-top:.7pt solid #12304f;
+    border-bottom:.7pt solid #c3ced9;padding:3.5pt 4pt;
+    page-break-after:avoid;break-after:avoid}
+  table.rtbl tr.grp b{color:#12304f;font-size:7.2pt;letter-spacing:.01em}
+  table.rtbl tr.grp span{color:#5c6b7a;font-weight:600;float:right;
+    font-variant-numeric:tabular-nums}
+  table.rtbl tbody tr.grp:nth-child(even) td{background:#e7edf3!important}
   table.rtbl .c-idx{width:3.4%;text-align:right;color:#777;font-variant-numeric:tabular-nums}
   table.rtbl .c-ref{width:17.5%;font-variant-numeric:tabular-nums}
   table.rtbl .c-title{width:32%}
@@ -1121,6 +1129,15 @@ body.mobile .dayfilt button.on,body.mobile .dpre button.on,body.mobile .mdate bu
 :root[data-theme="dark"] ::-webkit-scrollbar-thumb{
   background:#3f2d67;border-radius:8px;border:2px solid #120c21}
 :root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover{background:#5b3fa0}
+/* the phone's scrollbar, in the phone's colours. The violet thumb above is a
+   descendant-free selector, so it painted every scrolling element in the app —
+   including the phone body, where it was the last purple thing left on screen. */
+body.mobile ::-webkit-scrollbar{width:5px;height:5px}
+body.mobile ::-webkit-scrollbar-track{background:transparent}
+body.mobile ::-webkit-scrollbar-thumb{background:var(--m-edge);border-radius:4px;border:0}
+body.mobile ::-webkit-scrollbar-thumb:hover{background:var(--m-ink3)}
+body.mobile{scrollbar-width:thin;scrollbar-color:var(--m-edge) transparent}
+body.mobile #mbody{scrollbar-width:thin;scrollbar-color:var(--m-edge) transparent}
 
 
 /* Wrap text — cells show their full contents over as many lines as needed.
@@ -1466,7 +1483,7 @@ const today=isoDay(new Date());
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-08-31 · v98';
+const BUILD='LOD 2026-08-31 · v100';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -3606,19 +3623,41 @@ function buildPlanAnalysis(kind){
   const nPlanned=dueByNow.length, nActual=goneByNow.length;
 
   /* oldest committed date first */
+  const SHORT={done:'Submitted',late:'Submitted late',overdue:'Overdue',
+               due:'Due',nodate:'No date',pending:'Planned'};
+  /* GROUPED BY PROGRESS, outstanding first. A flat run of 44 rows in date order
+     made the reader do the sorting: what is late is what the meeting is about,
+     and it was scattered through the table. Within a group the oldest committed
+     date still leads, so the worst case in each group is the first line of it. */
+  const GRP=[['overdue','Overdue — committed date passed, nothing sent'],
+             ['due','Due — the committed date has not passed yet'],
+             ['pending','Planned — the week has not started'],
+             ['late','Submitted late — sent after the committed date'],
+             ['done','Submitted on time'],
+             ['nodate','No committed date']];
+  const rank=k=>{const i=GRP.findIndex(g=>g[0]===k);return i<0?GRP.length:i;};
   const ord=rows.slice().sort((a,b)=>{
+    const ra=rank(a.st.k), rb=rank(b.st.k);
+    if(ra!==rb)return ra-rb;
     const A1=a.it.plannedDate||'9999', B1=b.it.plannedDate||'9999';
     if(A1!==B1)return A1<B1?-1:1;
     return (a.doc.ref||'')<(b.doc.ref||'')?-1:1;
   });
 
-  const SHORT={done:'Submitted',late:'Submitted late',overdue:'Overdue',
-               due:'Due',nodate:'No date',pending:'Planned'};
-  let n=0;
+  let n=0, lastK=null;
   const body=ord.map(x=>{
     n++; const L=planLine(x), r=x.doc, st=x.st;
+    let head='';
+    if(st.k!==lastK){
+      lastK=st.k;
+      const g=GRP.find(y=>y[0]===st.k);
+      const cnt=ord.filter(y=>y.st.k===st.k).length;
+      head=`<tr class="grp"><td colspan="10"><b>${esc(g?g[1]:(SHORT[st.k]||st.k))}</b>
+        <span>${cnt} of ${T.n} · ${T.n?Math.round(cnt/T.n*100):0}%</span></td></tr>`;
+    }
+    const rowHead=head;
     const lateCls=L.late==='–'?'':(L.late>0?'p-over':'p-ok');
-    return `<tr>
+    return rowHead+`<tr>
       <td class="c-idx">${n}</td>
       <td class="c-ref">${esc((r.docNumber||'').split('\n')[0]||r.ref||'—')}</td>
       <td class="c-title">${esc(r.title||'')}</td>
@@ -3640,7 +3679,8 @@ function buildPlanAnalysis(kind){
     </div>
     <div class="rfilt"><b>Scope:</b> every ${kind==='review'?'review':'submission'} week on
       record${weeks.length?', '+esc(weekLabel(weeks[0].weekStart))+' to '+
-      esc(weekLabel(weeks[weeks.length-1].weekStart)):''}, oldest committed date first.
+      esc(weekLabel(weeks[weeks.length-1].weekStart)):''}, grouped by progress with
+      what is outstanding first, and the oldest committed date first within each group.
       Across every revision these documents have ever been through, AWPT has
       answered ${A.answered} time${A.answered===1?'':'s'} — ${A.rwc} with comments
       and ${A.rnc} with none.${A.inferred?` Of those, ${A.inferred} verdict${
@@ -4093,7 +4133,7 @@ function kpiHTML(){
   if(LEG==='hesco'){
     const n=s.t, sub=s.subAwpt, ans=DOCS().filter(r=>legReplied(r,'HESCO')).length;
     return tile('Submitted to AWPT',pc(sub)+'%',sub+' of '+n+' issued by HESCO','#2a78d6',pc(sub))+
-      tile('AWPT has answered',pc(ans)+'%',ans+' of '+n+' reviewed','#7c5cd6',pc(ans))+
+      tile('AWPT has answered',pc(ans)+'%',ans+' of '+n+' reviewed','#6fc38a',pc(ans))+
       tile('Sitting with AWPT',s.awpt,'awaiting AWPT’s reply now','#f0b429',pc(s.awpt))+
       tile('Still with HESCO',s.hesco,'to produce or resubmit','#d64545',pc(s.hesco))+
       tile('Never submitted',s.notIssued,'no cycle at all','#8c9aa8',pc(s.notIssued));
@@ -4114,13 +4154,19 @@ function kpiHTML(){
   }
   const core =
     tile('Overall progress',s.pct+'%',
+      /* a fixed colour, not the theme accent: as var(--accent) this bar was
+         violet on the desktop and mint on the phone, and an accent on a figure
+         is the thing we agreed it must never be */
       s.scored+' of '+s.t+' scored · '+(s.t-s.scored)+' have no planned date',
-      'var(--accent)',s.pct)+
+      '#4a90d9',s.pct)+
     tile('Submitted to AWPT', pc(s.subAwpt)+'%',
       s.subAwpt+' of '+s.t+' issued by HESCO','#2a78d6', pc(s.subAwpt))+
     tile('Approved by AWPT',
       (CLIENT().length?Math.round(s.okAwpt/CLIENT().length*100):0)+'%',
-      s.okAwpt+' of '+CLIENT().length+' cleared onward to Maaden','#7c5cd6',
+      /* was #7c5cd6 — the last violet on the phone, and it broke the tiles' own
+         logic besides: every other bar is blue for in-transit, green for
+         approved, red with HESCO, amber with AWPT. This one IS an approval. */
+      s.okAwpt+' of '+CLIENT().length+' cleared onward to Maaden','#6fc38a',
       CLIENT().length?s.okAwpt/CLIENT().length*100:0)+
     tile("Approved by Maaden",
       (CLIENT().length?Math.round(s.okMaaden/CLIENT().length*100):0)+'%',
@@ -4379,18 +4425,28 @@ function openLeg(leg){
    gone to AWPT. This is the dashboard now; everything else is
    behind "Show more detail".
    ============================================================ */
-let RECOV={loaded:false,items:[]};
+let RECOV={loaded:false,items:[],loading:false};
 async function loadRecovery(){
+  if(RECOV.loading)return;                 /* one read at a time */
+  RECOV.loading=true;
   try{
+    /* THE PHONE DRAWS BEFORE SIGN-IN FINISHES. The dashboard is rendered once
+       on load, when PLANS is still empty, and this used to latch loaded:true
+       with nothing in it — so the panel said "no recovery plan loaded" for the
+       rest of the session even though the plan was there all along. Fetch the
+       plan list if it has not arrived, and do not call it loaded until we have
+       actually been able to look. */
+    if((!PLANS||!PLANS.length)&&LIVE)await loadPlanning();
     const plans=(PLANS||[]).filter(p=>/^Recovery plan/i.test(p.name||''));
-    if(!plans.length){ RECOV={loaded:true,items:[]}; return; }
+    if(!plans.length){ RECOV={loaded:!!LIVE,items:[],loading:false}; return; }
     let out=[];
     for(const p of plans){
       const its=await api('lod_plan_items?planId=eq.'+p.id+'&order=plannedDate.asc');
       (its||[]).forEach(i=>out.push({...i, week:p.weekStart}));
     }
-    RECOV={loaded:true,items:out};
-  }catch(e){ RECOV={loaded:true,items:[]}; }
+    RECOV={loaded:true,items:out,loading:false};
+  }catch(e){ RECOV={loaded:!!LIVE,items:[],loading:false}; }
+  finally{ RECOV.loading=false; }
 }
 /* This panel answers the PLAIN question — has the document gone to AWPT — the
    same one the report's first donut asks, so the two read alike. The stricter
@@ -4414,7 +4470,7 @@ function recovState(it){
 function recoveryHTML(){
   if(!RECOV.loaded){
     /* redraw whichever screen asked for it, not just the desktop one */
-    loadRecovery().then(()=>{ MOBILE?mobRender():renderDash(); });
+    if(!RECOV.loading)loadRecovery().then(()=>{ MOBILE?mobRender():renderDash(); });
     return '<div class="empty">Reading the plan…</div>'; }
   const all=RECOV.items;
   if(!all.length)
@@ -4982,8 +5038,10 @@ async function openUsers(){
   };
   await draw();
 }
-const NTAG={mention:['Mention','#7c5cd6'],change:['Edit','#2a78d6'],
-  submission:['Submission','#0f9d58'],comment:['Comment','#7c5cd6']};
+/* mention is the one that is about YOU, so it takes the warm note; comment is
+   quieter. Neither is violet any more — nothing in the phone's palette is. */
+const NTAG={mention:['Mention','#e08544'],change:['Edit','#2a78d6'],
+  submission:['Submission','#0f9d58'],comment:['Comment','#7f9bb0']};
 function notifTag(k){
   const t=NTAG[k]||['Update','#8c9aa8'];
   return `<span class="ntag" style="background:${t[1]}22;color:${t[1]}">${t[0]}</span>`;
@@ -5809,6 +5867,9 @@ async function loadData(){
   await loadLegs();
   await loadCommentCounts();
   await loadPlanning();
+  /* whatever the pre-sign-in render concluded about the recovery plan, it was
+     working from an empty plan list — read it again now the real one is here */
+  RECOV={loaded:false,items:[],loading:false};
   await loadMembers();
   await loadSnaps();
   await loadAttention();
