@@ -459,6 +459,7 @@ table.g thead th.corner{text-align:center}
 .asgchip:hover,.asgchip:active{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
 .swipehint{font-size:10.5px;color:var(--muted);text-align:center;padding:2px 0 10px;
   text-transform:uppercase;letter-spacing:.06em;font-weight:650}
+body.mobile .swipehint{color:var(--m-ink3)}
 .phase{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;
   letter-spacing:.07em;text-transform:uppercase}
 .ph-live{background:rgba(15,157,88,.15);color:#0b7a44}
@@ -767,9 +768,47 @@ body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent)
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
 }
 :root[data-theme="dark"]{
-  --m-paper:#0b0e13; --m-card:#161b22; --m-line:#252c35; --m-line2:#1d232b;
-  --m-ink:#eef2f6; --m-ink2:#96a3b1; --m-ink3:#67747f;
-  --m-chip:#1e242c;
+  /* Sampled from the reference: a deep blue-grey ground with a lighter slate
+     card sitting on it, and separation carried by TONE rather than by rules.
+     The two accents are chrome only — a mint for anything you can touch, a warm
+     amber for a subtitle. Neither is ever used on a figure or a status, because
+     on this ground a mint would read as "good" and quietly become data. */
+  --m-paper:#1b232b; --m-card:#293947; --m-card2:#324958;
+  --m-line:rgba(255,255,255,.07); --m-line2:rgba(255,255,255,.045);
+  --m-edge:#3c5163;
+  --m-ink:#f4f9fc; --m-ink2:#bfe4f1; --m-ink3:#8aa8b8;
+  --m-chip:#22303b;
+  --m-accent:#86e3af; --m-accent-soft:rgba(134,227,175,.14);
+  --m-warm:#fd9345;
+  --m-shadow:0 8px 26px rgba(0,0,0,.34);
+}
+:root{
+  /* the light cousin — same shapes and the same two accents, so the phone looks
+     like one design whichever way the theme is set */
+  --m-card2:#f6f9fc; --m-edge:#d7dee6;
+  --m-accent:#128a5a; --m-accent-soft:rgba(18,138,90,.12);
+  --m-warm:#c05a17;
+  --m-shadow:0 6px 18px rgba(15,25,40,.08);
+}
+/* THE PHONE RUNS ON ITS OWN PALETTE.
+   Chasing individual rules was losing: the desktop's dark skin restyles shared
+   components — panels, tiles, chips, fields, charts — and every one of them
+   reappeared on the phone in violet. Re-pointing the shared variables inside
+   body.mobile fixes all of them at once, and anything added later inherits it
+   for free. The semantic colours (--good, --warn, --critical) are deliberately
+   NOT redirected: they carry meaning and must not become decoration. */
+body.mobile{
+  --page1:var(--m-paper); --page2:var(--m-paper);
+  --surface:var(--m-card); --surface2:var(--m-chip); --field:var(--m-chip);
+  --glass:var(--m-card); --card:var(--m-card); --chip:var(--m-chip);
+  --line:var(--m-line); --line2:var(--m-line2); --grid:var(--m-line2);
+  --ring:var(--m-line);
+  --ink:var(--m-ink); --ink2:var(--m-ink2); --ink3:var(--m-ink3); --muted:var(--m-ink3);
+  --c-dim:var(--m-ink3);
+  --accent:var(--m-accent); --accent-soft:var(--m-accent-soft);
+  --accent-soft2:var(--m-accent-soft);
+  --sel:var(--m-accent-soft); --selb:var(--m-accent);
+  --shadow:var(--m-shadow);
 }
 #mob{display:none;position:fixed;inset:0;flex-direction:column;z-index:1000;background:var(--m-paper)}
 body.mobile #mob{display:flex}
@@ -778,23 +817,29 @@ body.mobile{overflow:hidden}
 
 /* --- header --- */
 #mhead{display:flex;align-items:center;gap:12px;
-  padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;
-  background:var(--m-card);border-bottom:1px solid var(--m-line);flex:none}
+  padding:calc(env(safe-area-inset-top) + 14px) 18px 16px;
+  background:var(--m-card);flex:none;
+  /* the rule is gone: the header is a lighter block, and that is the division */
+  border-radius:0 0 22px 22px;position:relative;z-index:2;box-shadow:var(--m-shadow)}
 #mhead .t{flex:1;min-width:0}
-#mtitle{font-weight:680;font-size:17px;letter-spacing:-.022em;color:var(--m-ink);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+#mtitle{font-weight:750;font-size:23px;letter-spacing:-.03em;color:var(--m-ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.15}
 #mtitle.mono{font-family:var(--mono);font-size:14px;font-weight:600;letter-spacing:-.01em}
-#msub{font-size:10.5px;color:var(--m-ink3);white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis;text-transform:uppercase;letter-spacing:.09em;font-weight:600;margin-top:2px}
-#mhead button{border:1px solid var(--m-line);background:var(--m-card);color:var(--m-ink2);
-  width:36px;height:36px;border-radius:12px;font-size:15px;cursor:pointer;flex:none;position:relative;
+/* the subtitle is the one warm note, as in the reference */
+#msub{font-size:12.5px;color:var(--m-warm);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;letter-spacing:0;font-weight:600;margin-top:3px;text-transform:none}
+/* bare icons in the accent — no chrome around them */
+#mhead button{border:0;background:none;color:var(--m-accent);
+  width:38px;height:38px;border-radius:12px;font-size:15px;cursor:pointer;flex:none;position:relative;
   display:flex;align-items:center;justify-content:center;transition:transform .12s,background .12s}
-#mhead button:active{transform:scale(.93);background:var(--m-chip)}
+#mhead button:active{transform:scale(.9);background:var(--m-accent-soft)}
+#mhead button svg{stroke-width:1.8}
 
-#mbody{flex:1;overflow:auto;padding:14px 14px 22px;-webkit-overflow-scrolling:touch}
+#mbody{flex:1;overflow:auto;padding:18px 16px 26px;-webkit-overflow-scrolling:touch}
 
 /* --- tab bar --- */
-#mtabs{display:flex;background:var(--m-card);border-top:1px solid var(--m-line);flex:none;
+#mtabs{display:flex;background:var(--m-card);flex:none;
+  border-radius:22px 22px 0 0;box-shadow:var(--m-shadow);position:relative;z-index:2;
   padding-bottom:env(safe-area-inset-bottom)}
 #mtabs button{flex:1;border:none;background:none;color:var(--m-ink3);padding:9px 2px 10px;
   font-size:9.5px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;
@@ -802,16 +847,18 @@ body.mobile{overflow:hidden}
   transition:color .15s}
 #mtabs button svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;
   stroke-linecap:round;stroke-linejoin:round}
-#mtabs button.on{color:var(--accent)}
-#mtabs button.on::before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);
-  width:26px;height:2px;background:var(--accent);border-radius:0 0 2px 2px}
+#mtabs button.on{color:var(--m-accent)}
+#mtabs button.on::before{content:"";position:absolute;top:7px;left:50%;transform:translateX(-50%);
+  width:24px;height:3px;background:var(--m-accent);border-radius:3px}
 
 /* --- the card: a document title block --- */
-.dcard{background:var(--m-card);border:1px solid var(--m-line);border-radius:13px;
-  margin-bottom:9px;overflow:hidden;position:relative;cursor:pointer;
+.dcard{background:var(--m-card);border:1px solid transparent;border-radius:18px;
+  margin-bottom:11px;overflow:hidden;position:relative;cursor:pointer;
+  box-shadow:var(--m-shadow);
   transition:transform .13s ease,border-color .13s}
-.dcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--edge,var(--m-ink3))}
-.dcard:active{transform:scale(.985);border-color:var(--m-ink3)}
+/* the status edge stays — it is the one piece of colour that carries meaning */
+.dcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--edge,var(--m-edge))}
+.dcard:active{transform:scale(.985);border-color:var(--m-accent)}
 .dcard.k-A::before,.dcard.k-I::before{background:#0f9d58}
 .dcard.k-B::before{background:#6fc38a}
 .dcard.k-C::before{background:#e8834a}
@@ -857,28 +904,31 @@ body.mobile{overflow:hidden}
 .msearchwrap{position:relative;margin-bottom:11px}
 .msearchwrap svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);
   width:15px;height:15px;stroke:var(--m-ink3);fill:none;stroke-width:1.9;pointer-events:none}
-#msearch{width:100%;padding:11px 13px 11px 36px;border-radius:12px;font-size:15px;
+#msearch{width:100%;padding:13px 14px 13px 40px;border-radius:14px;font-size:15px;
   border:1px solid var(--m-line);background:var(--m-card);color:var(--m-ink);
   -webkit-appearance:none}
 #msearch::placeholder{color:var(--m-ink3)}
-#msearch:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+#msearch:focus{outline:none;border-color:var(--m-accent);box-shadow:0 0 0 3px var(--m-accent-soft)}
 
 .mfilt{display:flex;gap:6px;overflow-x:auto;padding-bottom:11px;margin:0 -14px 2px;
   padding-left:14px;padding-right:14px;scrollbar-width:none}
 .mfilt::-webkit-scrollbar{display:none}
 .mfilt button{border:1px solid var(--m-line);background:var(--m-card);color:var(--m-ink2);
-  border-radius:9px;padding:6px 11px;font-size:11px;font-weight:650;letter-spacing:.02em;
-  white-space:nowrap;cursor:pointer;flex:none;display:flex;align-items:center;gap:6px;
+  border-radius:12px;padding:9px 14px;font-size:12px;font-weight:650;letter-spacing:.02em;
+  white-space:nowrap;cursor:pointer;flex:none;display:flex;align-items:center;gap:7px;
   transition:background .13s,color .13s,border-color .13s}
-.mfilt button b{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--m-ink3)}
-.mfilt button.on{background:var(--m-ink);color:var(--m-card);border-color:var(--m-ink)}
-.mfilt button.on b{color:var(--m-card);opacity:.65}
+.mfilt button b{font-family:var(--mono);font-size:10.5px;font-weight:700;color:var(--m-ink3)}
+/* chosen = outlined in the accent, the way the size is picked in the reference,
+   rather than filled: a filled chip competes with the status colours */
+.mfilt button.on{background:var(--m-accent-soft);color:var(--m-ink);border-color:var(--m-accent)}
+.mfilt button.on b{color:var(--m-accent);opacity:1}
 
 .applied{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:11px}
-.applied span{background:var(--accent);color:#fff;border-radius:8px;padding:5px 10px;
+.applied span{background:var(--m-accent-soft);color:var(--m-accent);
+  border:1px solid var(--m-accent);border-radius:10px;padding:5px 11px;
   font-size:11px;font-weight:650;letter-spacing:.02em}
 .applied button{margin-left:auto;border:1px solid var(--m-line);background:var(--m-card);
-  color:var(--m-ink2);border-radius:8px;padding:5px 11px;font-size:11px;font-weight:650;cursor:pointer}
+  color:var(--m-ink2);border-radius:10px;padding:5px 11px;font-size:11px;font-weight:650;cursor:pointer}
 
 .mcount{display:flex;align-items:center;gap:8px;margin-bottom:11px;flex-wrap:wrap}
 .mcount .n{flex:1 1 auto;min-width:0;font-size:10.5px;font-weight:650;text-transform:uppercase;
@@ -886,13 +936,13 @@ body.mobile{overflow:hidden}
 .mcount button{flex:none;white-space:nowrap}
 .mcount .n b{font-family:var(--mono);color:var(--m-ink2);font-size:11px}
 .mcount button{border:1px solid var(--m-line);background:var(--m-card);color:var(--m-ink2);
-  border-radius:9px;padding:6px 12px;font-size:11px;font-weight:650;cursor:pointer;
+  border-radius:12px;padding:8px 14px;font-size:11.5px;font-weight:650;cursor:pointer;
   display:flex;align-items:center;gap:5px}
 .mcount button:active{background:var(--m-chip)}
 
 /* --- detail: a specification sheet --- */
-.spec{background:var(--m-card);border:1px solid var(--m-line);border-radius:13px;
-  overflow:hidden;margin-bottom:11px}
+.spec{background:var(--m-card);border:0;border-radius:18px;box-shadow:var(--m-shadow);
+  overflow:hidden;margin-bottom:12px}
 .spec h4{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.11em;
   color:var(--m-ink3);padding:11px 14px 8px;border-bottom:1px solid var(--m-line2)}
 .srow{display:flex;align-items:baseline;gap:14px;padding:10px 14px;
@@ -911,7 +961,8 @@ body.mobile{overflow:hidden}
 
 /* --- dashboard tiles --- */
 .mkpi{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:13px}
-.mkpi .kpi{background:var(--m-card);border:1px solid var(--m-line);border-radius:13px;padding:13px 14px}
+.mkpi .kpi{background:var(--m-card);border:0;border-radius:18px;padding:15px 16px;
+  box-shadow:var(--m-shadow)}
 .mkpi .kpi .k{font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
   color:var(--m-ink3)}
 .mkpi .kpi .v{font-family:var(--mono);font-size:29px;font-weight:700;letter-spacing:-.035em;
@@ -919,8 +970,8 @@ body.mobile{overflow:hidden}
 .mkpi .kpi .p{font-size:10.5px;color:var(--m-ink2);margin-top:4px;font-weight:500}
 .mkpi .kpi .bar{height:3px;border-radius:2px;background:var(--m-chip);margin-top:10px;overflow:hidden}
 .mkpi .kpi .bar i{display:block;height:100%;border-radius:2px}
-body.mobile .panel{background:var(--m-card);border:1px solid var(--m-line);border-radius:13px;
-  padding:14px;margin-bottom:11px}
+body.mobile .panel{background:var(--m-card);border:0;border-radius:18px;
+  box-shadow:var(--m-shadow);padding:16px;margin-bottom:12px}
 body.mobile .panel h3{font-size:9.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;
   color:var(--m-ink3);margin-bottom:12px}
 
@@ -970,18 +1021,18 @@ body.mobile .panel h3{font-size:9.5px;font-weight:700;letter-spacing:.11em;text-
 :root[data-theme="dark"] .win .whead{
   background:linear-gradient(180deg,rgba(45,32,78,.9),rgba(31,22,54,.6));
   border-bottom:1px solid rgba(168,85,247,.14)}
-:root[data-theme="dark"] .panel{
+:root[data-theme="dark"] body:not(.mobile) .panel{
   background:linear-gradient(180deg,rgba(34,24,60,.55),rgba(24,17,44,.55));
   border:1px solid rgba(168,85,247,.14);border-radius:14px}
-:root[data-theme="dark"] .panel h3{color:#c4b5fd;letter-spacing:.09em}
+:root[data-theme="dark"] body:not(.mobile) .panel h3{color:#c4b5fd;letter-spacing:.09em}
 
 /* the headline tiles, as glowing cards */
-:root[data-theme="dark"] .kpi{
+:root[data-theme="dark"] body:not(.mobile) .kpi{
   background:linear-gradient(180deg,rgba(38,27,68,.75),rgba(24,17,44,.75));
   border:1px solid rgba(168,85,247,.16);border-radius:14px;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
-:root[data-theme="dark"] .kpi .k{color:#a99cc9;letter-spacing:.1em}
-:root[data-theme="dark"] .kpi .v{color:#f5f2ff;text-shadow:0 0 22px rgba(168,85,247,.35)}
+:root[data-theme="dark"] body:not(.mobile) .kpi .k{color:#a99cc9;letter-spacing:.1em}
+:root[data-theme="dark"] body:not(.mobile) .kpi .v{color:#f5f2ff;text-shadow:0 0 22px rgba(168,85,247,.35)}
 
 /* the top bar */
 :root[data-theme="dark"] .topbar{
@@ -991,21 +1042,34 @@ body.mobile .panel h3{font-size:9.5px;font-weight:700;letter-spacing:.11em;text-
 :root[data-theme="dark"] .tbbtn:hover{background:var(--chip);color:#e9d5ff}
 
 /* controls */
-:root[data-theme="dark"] .btn,
-:root[data-theme="dark"] .f,
-:root[data-theme="dark"] input,
-:root[data-theme="dark"] select,
-:root[data-theme="dark"] textarea{
+:root[data-theme="dark"] body:not(.mobile) .btn,
+:root[data-theme="dark"] body:not(.mobile) .f,
+:root[data-theme="dark"] body:not(.mobile) input,
+:root[data-theme="dark"] body:not(.mobile) select,
+:root[data-theme="dark"] body:not(.mobile) textarea{
   background:rgba(18,12,33,.85);border-color:#3a2a5e;color:var(--ink)}
-:root[data-theme="dark"] .btn:hover{border-color:var(--accent);color:#e9d5ff}
-:root[data-theme="dark"] .btn.primary,
-:root[data-theme="dark"] button.primary{
+:root[data-theme="dark"] body:not(.mobile) .btn:hover{border-color:var(--accent);color:#e9d5ff}
+:root[data-theme="dark"] body:not(.mobile) .btn.primary,
+:root[data-theme="dark"] body:not(.mobile) button.primary{
   background:linear-gradient(180deg,#a855f7,#7c3aed);border-color:#8b5cf6;color:#fff;
   box-shadow:0 6px 18px rgba(124,58,237,.45)}
-:root[data-theme="dark"] .f:focus,
-:root[data-theme="dark"] input:focus,
-:root[data-theme="dark"] select:focus{
+:root[data-theme="dark"] body:not(.mobile) .f:focus,
+:root[data-theme="dark"] body:not(.mobile) input:focus,
+:root[data-theme="dark"] body:not(.mobile) select:focus{
   outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(168,85,247,.22)}
+/* fields on the phone, in the phone's colours — the violet field above was
+   showing through on every dropdown and text box */
+body.mobile .f,body.mobile input,body.mobile select,body.mobile textarea{
+  background:var(--m-chip);border-color:var(--m-line);color:var(--m-ink);
+  border-radius:12px}
+body.mobile .f:focus,body.mobile input:focus,body.mobile select:focus,
+body.mobile textarea:focus{
+  outline:none;border-color:var(--m-accent);box-shadow:0 0 0 3px var(--m-accent-soft)}
+body.mobile .btn{background:var(--m-card);border-color:var(--m-line);color:var(--m-ink2);
+  border-radius:12px}
+body.mobile .btn:hover,body.mobile .btn:active{border-color:var(--m-accent);color:var(--m-ink)}
+body.mobile .btn.primary{background:var(--m-accent);border-color:var(--m-accent);color:#0d2018}
+body.mobile .btn.on{background:var(--m-accent-soft);border-color:var(--m-accent);color:var(--m-ink)}
 
 /* the register */
 :root[data-theme="dark"] table.g thead th{
@@ -1019,20 +1083,30 @@ body.mobile .panel h3{font-size:9.5px;font-weight:700;letter-spacing:.11em;text-
 :root[data-theme="dark"] table.g tbody tr:nth-child(even) td.stick1{background:#1c1434}
 :root[data-theme="dark"] table.g tbody tr:hover td.stick1{background:#251a42}
 
-/* chips, cards and tags */
-:root[data-theme="dark"] .dcard{
+/* chips, cards and tags — DESKTOP ONLY.
+   These four selectors hit .dcard and the chip rows, which the phone also uses,
+   so in dark mode the violet skin was painting straight over the phone's own
+   palette: navy header, violet cards. Scoped to :not(.mobile) so the phone keeps
+   the skin defined for it and the desktop keeps this one. */
+:root[data-theme="dark"] body:not(.mobile) .dcard{
   background:linear-gradient(180deg,rgba(35,25,62,.9),rgba(23,16,41,.9));
   border:1px solid rgba(168,85,247,.16)}
-:root[data-theme="dark"] .mfilt button,
-:root[data-theme="dark"] .dayfilt button,
-:root[data-theme="dark"] .dpre button,
-:root[data-theme="dark"] .mdate button{
+:root[data-theme="dark"] body:not(.mobile) .mfilt button,
+:root[data-theme="dark"] body:not(.mobile) .dayfilt button,
+:root[data-theme="dark"] body:not(.mobile) .dpre button,
+:root[data-theme="dark"] body:not(.mobile) .mdate button{
   background:rgba(30,21,54,.8);border-color:#3a2a5e;color:var(--ink2)}
-:root[data-theme="dark"] .mfilt button.on,
-:root[data-theme="dark"] .dayfilt button.on,
-:root[data-theme="dark"] .dpre button.on,
-:root[data-theme="dark"] .mdate button.on{
+:root[data-theme="dark"] body:not(.mobile) .mfilt button.on,
+:root[data-theme="dark"] body:not(.mobile) .dayfilt button.on,
+:root[data-theme="dark"] body:not(.mobile) .dpre button.on,
+:root[data-theme="dark"] body:not(.mobile) .mdate button.on{
   background:linear-gradient(180deg,#a855f7,#7c3aed);border-color:#8b5cf6;color:#fff}
+/* the phone's own chip row: outlined when chosen, never filled */
+body.mobile .dayfilt button,body.mobile .dpre button,body.mobile .mdate button{
+  background:var(--m-card);border:1px solid var(--m-line);color:var(--m-ink2);
+  border-radius:12px}
+body.mobile .dayfilt button.on,body.mobile .dpre button.on,body.mobile .mdate button.on{
+  background:var(--m-accent-soft);border-color:var(--m-accent);color:var(--m-ink)}
 
 /* the sign-in card */
 :root[data-theme="dark"] #login .card,
@@ -1079,6 +1153,10 @@ table.g.wrapped td .cellin{white-space:pre-wrap}
 /* recovery plan comparison */
 .rchead{display:flex;align-items:center;gap:16px;margin-bottom:12px}
 .rcpct{font-size:38px;font-weight:700;letter-spacing:-.02em;color:var(--accent);line-height:1}
+/* A FIGURE IS NOT CHROME. In the accent this headline read as "green = good"
+   whatever it said — it would have been mint at 20% too. Plain ink, and the
+   coloured bar underneath is what carries the judgement. */
+body.mobile .rcpct{color:var(--m-ink)}
 .rcsub b{display:block;font-size:14px}
 .rcsub span{font-size:12px;color:var(--muted)}
 .rcbar{display:flex;height:12px;border-radius:7px;overflow:hidden;background:var(--chip);margin-bottom:8px}
@@ -1087,6 +1165,9 @@ table.g.wrapped td .cellin{white-space:pre-wrap}
 .rcbar i.overdue{background:#d64545} .rcbar i.due{background:#3f2d67}
 .rclegend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ink2);margin-bottom:14px}
 .rclegend span{display:inline-flex;align-items:center;gap:6px}
+/* a dropped commitment is stated, not hidden: a base that shrinks in silence
+   is how a percentage improves for the wrong reason */
+.rclegend span.rcgone{color:var(--ink3);font-style:italic}
 .rclegend i{width:11px;height:9px;border-radius:3px;display:inline-block}
 .rclegend i.ontime{background:#0f9d58} .rclegend i.late{background:#f0b429}
 .rclegend i.overdue{background:#d64545} .rclegend i.due{background:#3f2d67}
@@ -1144,6 +1225,11 @@ body.mobile table.rctbl.stack td.act:before{content:" · "}
 .legtab.on{border-color:var(--accent);background:linear-gradient(180deg,var(--accent-soft),transparent);
   box-shadow:0 0 0 3px rgba(168,85,247,.14)}
 .legtab.on b{color:#e9d5ff}
+/* the phone's own leg tabs: white label, accent outline, nothing lavender */
+body.mobile .legtab b{color:var(--m-ink)}
+body.mobile .legtab.on b{color:var(--m-ink)}
+body.mobile .legtab.on{border-color:var(--m-accent);background:var(--m-accent-soft);
+  box-shadow:0 0 0 3px var(--m-accent-soft)}
 .lockmark{font-size:10.5px;color:var(--goodtext);white-space:nowrap}
 tr.pgone td{background:rgba(214,69,69,.07)}
 </style>
@@ -1316,7 +1402,7 @@ const COLS=[
   /* HESCO → AWPT */
   {k:'hRev',  t:'HESCO rev',   w:88,  ro:1, cls:'ctr mono', leg:'hesco', calc:r=>legRev(r,'HESCO')},
   {k:'hSent', t:'Sent to AWPT',w:112, ro:1, cls:'mono',     leg:'hesco', calc:r=>legSent(r,'HESCO')},
-  {k:'hBack', t:'AWPT replied',w:112, ro:1, cls:'mono',     leg:'hesco', calc:r=>legReplied(r,'HESCO')},
+  {k:'hBack', t:'AWPT replied',w:112, ro:1, cls:'mono',     leg:'hesco', calc:r=>futureDate(legReplied(r,'HESCO'))},
   {k:'hOut',  t:'AWPT status', w:150, ro:1, cls:'ctr', pill:1, leg:'hesco', calc:r=>legState(r,'HESCO')},
   {k:'hDays', t:'Days with AWPT',w:110,ro:1, cls:'num',      leg:'hesco',
      calc:r=>{const c=lastCycle(r,'HESCO');
@@ -1337,7 +1423,7 @@ const COLS=[
   /* AWPT → Maaden */
   {k:'mRev',  t:'Maaden rev',  w:92,  ro:1, cls:'ctr mono', leg:'maaden', calc:r=>legRev(r,'Maaden')},
   {k:'mSent', t:'Sent to Maaden',w:118,ro:1, cls:'mono',    leg:'maaden', calc:r=>legSent(r,'Maaden')},
-  {k:'mBack', t:'Maaden replied',w:118,ro:1, cls:'mono',    leg:'maaden', calc:r=>legReplied(r,'Maaden')},
+  {k:'mBack', t:'Maaden replied',w:118,ro:1, cls:'mono',    leg:'maaden', calc:r=>futureDate(legReplied(r,'Maaden'))},
   {k:'mOut',  t:'Maaden status',w:190, ro:1, cls:'ctr', pill:1,leg:'maaden', calc:r=>legState(r,'Maaden')},
   {k:'mDays', t:'Days with Maaden',w:118,ro:1,cls:'num',    leg:'maaden',
      calc:r=>{const c=lastCycle(r,'Maaden');
@@ -1380,7 +1466,7 @@ const today=isoDay(new Date());
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-08-31 · v93';
+const BUILD='LOD 2026-08-31 · v98';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1873,6 +1959,11 @@ const legCycles=(r,leg)=>(HIST[r.id]||[]).filter(h=>h.leg===leg)
 const lastCycle=(r,leg)=>{const c=legCycles(r,leg);return c.length?c[c.length-1]:null;};
 const legSent   =(r,leg)=>{const t=legRow(r,leg); if(t)return t.sent||'';
   const c=lastCycle(r,leg);return c?(c.submitted||''):'';};
+/* A reply date after today has not happened. Two are on record — the register
+   printed them flat, as though the reviewer had answered three weeks from now.
+   Marked rather than hidden: the date is what needs correcting, so it has to
+   stay visible, but nobody should read it as a fact. */
+const futureDate=d=>(d&&d>today)?d+' ?':(d||'');
 const legReplied=(r,leg)=>{const t=legRow(r,leg); if(t)return t.replied||'';
   const c=lastCycle(r,leg);return c?(c.responded||''):'';};
 const legRev    =(r,leg)=>{const t=legRow(r,leg); if(t)return t.rev||'';
@@ -1883,20 +1974,27 @@ const legOutcome=(r,leg)=>{const c=lastCycle(r,leg);
   return c.submitted&&!c.responded?'Awaiting reply':'';};
 function legState(r,leg){
   if(isHold(r))return 'On hold';
+  /* "sent, no answer yet" has a DIFFERENT NAME on each leg, and the name has to
+     be one of that leg's own card keys. Returning 'Awaiting reply' on the Client
+     leg — which has no such card — dropped the document out of every Maaden
+     figure, and the dashboard would still have claimed the states covered 100%
+     while quietly counting one fewer. */
+  const OUT=(leg==='Maaden'||leg==='maaden')?'Under Client review':'Awaiting reply';
   const t=legRow(r,leg);
   if(t){
+    if(t.outcome==='Awaiting reply')return OUT;   /* the rollup writes this word */
     if(t.outcome)return t.outcome;
     /* A reply date with no verdict is a MISSING CODE, not an unsent document.
        Falling through to 'Not submitted' here told the opposite of the truth
        and made the gap invisible — the one card meant to catch it could never
        fill, because this path runs first. */
     if((t.replied||'').trim())return 'Replied';
-    if((t.sent||'').trim())return 'Awaiting reply';
+    if((t.sent||'').trim())return OUT;
     return 'Not submitted';
   }
   const c=lastCycle(r,leg);
   if(!c)return 'Not submitted';
-  if(!c.responded)return 'Awaiting reply';
+  if(!c.responded)return OUT;
   return c.status||'Replied';
 }
 function cellText(r,c){
@@ -1989,6 +2087,11 @@ function renderGrid(g){
     (PICKED.size?` · <b>${PICKED.size} ticked</b> <button class="lnk" id="gclr">clear</button>`:'');
   wireGrid(G);
   paintSel();
+  /* AFTER the repaint, and deliberately so: the rows have just been rebuilt, so
+     a selection made against the old order still highlights but is no longer a
+     paste target. Any further paintSel — every one of them comes from the person
+     choosing a cell — marks it fresh again. */
+  G.selFresh=false;
   LEG=keepLeg;
 }
 function wireGrid(g){
@@ -2111,6 +2214,7 @@ function wireGrid(g){
 }
 function paintSel(){
   const tbl=GQ('[id="gwrap"] table'); if(!tbl||!GRID||!GRID.sel)return;
+  GRID.selFresh=true;                     /* chosen against the rows on screen */
   const {r1,c1,r2,c2}=GRID.sel;
   const [ra,rb]=[Math.min(r1,r2),Math.max(r1,r2)],[ca,cb]=[Math.min(c1,c2),Math.max(c1,c2)];
   tbl.querySelectorAll('td[data-c]').forEach(td=>{
@@ -2233,8 +2337,12 @@ async function clearSel(){
 }
 async function addRow(){
   if(!canEdit())return toast(LIVE?'Your account cannot edit':'Read-only snapshot');
+  /* 'Not Submitted' is not one of STATUSES — 'Not issued' is, and is what the
+     other 24 unissued documents carry. The literal only ever existed as a
+     display fallback for a blank, so a new row was born with a status the
+     pills, the code grouping and the filters did not recognise. */
   const base={sn:String(AB.length+1),ref:'',title:'',
-    discipline:'',reviewClass:'',status:'Not Submitted'};
+    discipline:'',reviewClass:'',status:'Not issued'};
   const row=await apiInsert(base);
   AB.push(row); txPush({t:'add',id:row.id,row:base}); updateUndoBtns();
   await logAct('add',row); refresh(); toast('Document added — fill in the number and name');
@@ -2270,10 +2378,24 @@ function typingInField(e){
   /* the cell editor is an input too, but the grid owns that one */
   return false;
 }
+/* Does the register actually own the keyboard right now? Checking only that the
+   event target is not an input was NOT enough: a paste made while reading the
+   dashboard, the history window or the plan still landed here, and went into
+   whichever cell GRID.sel last pointed at — a cell the person was not looking at
+   and may not even have chosen (the selection survives a re-sort). That is how
+   real document titles were overwritten. A paste is only for the grid when the
+   focus is inside the grid's own window. */
+function gridHasFocus(){
+  if(!GRID||!GRID.win||!GRID.win.el)return false;
+  const a=document.activeElement;
+  return !!a&&GRID.win.el.contains(a);
+}
 document.addEventListener('paste',e=>{
   if(typingInField(e))return;              /* let the field have it */
   if(!GRID||!GRID.win||GRID.editing)return;
   if(!GQ('[id="gwrap"]'))return;
+  if(!gridHasFocus())return;               /* not our paste to take */
+  if(!GRID.sel||!GRID.selFresh)return;     /* a selection from before a redraw */
   const t=(e.clipboardData||window.clipboardData).getData('text');
   if(t){e.preventDefault();pasteIntoSel(t);}
 });
@@ -2628,6 +2750,26 @@ async function resolveAssignee(name){
 /* An item counts as achieved when the document has been submitted SINCE it was
    planned — comparing against the submission date captured when it was added,
    so work already done beforehand is not claimed as progress. */
+/* THE ONE DEFINITION of a kept commitment, used by the plan, the analysis
+   report AND the Overview's recovery panel. They used to disagree: the Overview
+   asked only "has this ever been submitted to AWPT", which counted a document
+   submitted months BEFORE the commitment was written and since returned RWC —
+   nine of them — as delivered, and reported 70% where the honest figure is 52%.
+     · a submission made AFTER the commitment — a direct answer to it; or
+     · the obligation is already discharged — the latest revision is with AWPT
+       awaiting a reply, or AWPT cleared it.
+   A revision that came back RWC is neither: the ball is with HESCO. */
+function commitmentMet(r,it){
+  r=r||{}; it=it||{};
+  const sub=(r.awptSubmitted||'').trim(), base=(it.baseAwptSub||'').trim();
+  const answered=!!sub&&sub!==base;
+  const last=lastCycle(r,'HESCO');
+  const discharged=!!last&&(last.submitted||'')!==''&&
+    (!(last.responded||'') || last.status==='RNC' || APPROVED.includes(last.status||''));
+  const done=answered||discharged;
+  /* the date it actually went out, whichever of the two applies */
+  return {done, on: done?(answered?sub:((last&&last.submitted)||sub||'')):''};
+}
 function itemState(it,plan){
   const r=AB.find(a=>a.id===it.docId)||{};
   if(plan&&!planStarted(plan))
@@ -2667,15 +2809,9 @@ function itemState(it,plan){
          awaiting a reply, or AWPT cleared it.
      A revision that came back RWC is neither: the ball is with HESCO and the
      committed revision is still owed. */
-  const sub=(r.awptSubmitted||'').trim(), base=(it.baseAwptSub||'').trim();
-  const answered=!!sub&&sub!==base;
-  const last=lastCycle(r,'HESCO');
-  const discharged=!!last&&(last.submitted||'')!==''&&
-    (!(last.responded||'') || last.status==='RNC' || APPROVED.includes(last.status||''));
-  const done=answered||discharged;
+  const {done,on:onDate}=commitmentMet(r,it);
   if(done){
-    /* judge the date it actually went out, whichever of the two applies */
-    const on=sub||(last?last.submitted:'')||'';
+    const on=onDate;
     const late=it.plannedDate&&on&&on>it.plannedDate;
     return {k:late?'late':'done',label:(late?'Submitted late':'Submitted')+' '+on,
             cls:late?'st-late':'st-done',sub:on,
@@ -3176,13 +3312,18 @@ function planAwptReview(rows){
   const cyc=[];
   docs.forEach(r=>(HIST[r.id]||[]).filter(h=>h.leg==='HESCO').forEach(h=>cyc.push(h)));
   const answered=cyc.filter(h=>(h.responded||'').trim()!=='');
-  const closed=answered.filter(h=>h.days!=null&&h.days>=0).map(h=>h.days).sort((a,b)=>a-b);
+  /* the same bound the leg panel now uses: a reply dated after today cannot have
+     happened, so it cannot be part of an average that goes to the client */
+  const closed=answered.filter(h=>h.days!=null&&h.days>=0&&(h.responded||'')<=today)
+    .map(h=>h.days).sort((a,b)=>a-b);
   const open=cyc.filter(h=>(h.submitted||'').trim()!==''&&!(h.responded||'').trim());
   const waiting=open.map(h=>days(h.submitted,today)).filter(n=>n>=0);
   return {docs:docs.length, states,
     rnc:answered.filter(h=>h.status==='RNC').length,
     rwc:answered.filter(h=>h.status==='RWC').length,
     cycles:cyc.length, answered:answered.length, open:open.length,
+    /* answers nobody recorded — deduced from the resubmission pattern */
+    inferred:answered.filter(isInferred).length,
     avg:closed.length?Math.round(closed.reduce((a,b)=>a+b,0)/closed.length*10)/10:null,
     med:closed.length?closed[Math.floor(closed.length/2)]:null,
     worst:closed.length?closed[closed.length-1]:null,
@@ -3279,8 +3420,12 @@ function planLine(x){
   /* what AWPT said about that last revision — the whole point of the column */
   /* "awaiting" did not say awaiting what. The dashboard calls this state
      "With AWPT now"; the report says the same thing in the space it has. */
+  /* Every other surface — the register, the phone card, the history window and
+     the spreadsheet export — suffixes an inferred verdict with "~". The report
+     that leaves the building was the only one stating a guess as a fact. */
   const lastCode=!last ? ''
-    : ((last.responded||'') ? (last.status||'—') : 'with AWPT');
+    : ((last.responded||'') ? ((last.status||'—')+(isInferred(last)?' ~':''))
+                            : 'with AWPT');
   return {cyc, last, lastCode,
     lastRev:last?(last.rev||'?'):'Not submitted',
     cycles:cyc.length||'–',
@@ -3394,7 +3539,7 @@ function buildPlanAnalysis(kind){
         <div class="lgnote">${dueP} of ${lastP} committed dates have passed</div>
       </div></div>`;
   };
-  const donut=(title,base,baseNote,segs)=>{
+  const donut=(title,base,baseNote,segs,foot)=>{
     const tot=base||segs.reduce((t,x)=>t+x.n,0);
     const GAP=segs.filter(x=>x.n>0).length>1?1.2:0;   /* surface gap between fills */
     let off=25;                                        /* start at twelve o'clock */
@@ -3410,9 +3555,14 @@ function buildPlanAnalysis(kind){
     }).join('');
     /* a state nobody is in is noise, not information */
     const shown=segs.filter(x=>x.n>0);
+    /* Largest remainder, the same helper the dashboard cards use. Rounding each
+       share on its own let a legend print 101% — the second donut did exactly
+       that — which invites the reader to distrust every other figure. */
+    const shares=pct100(segs.map(x=>x.n));
+    segs.forEach((x,i)=>{x._p=shares[i];});
     const legend=(shown.length?shown:segs.slice(0,1)).map(x=>
       `<div class="lg"><i style="background:${x.c}"></i>
-      <span>${esc(x.t)}</span><b>${x.n}</b><u>${tot?Math.round(x.n/tot*100):0}%</u></div>`).join('');
+      <span>${esc(x.t)}</span><b>${x.n}</b><u>${x._p}%</u></div>`).join('');
     return `<div class="rdo"><h4>${esc(title)}</h4>
       <div class="rdrow">
         <svg class="dn" viewBox="0 0 42 42" role="img" aria-label="${esc(title)}">
@@ -3420,7 +3570,8 @@ function buildPlanAnalysis(kind){
           <text x="21" y="20.6" class="dnv">${tot}</text>
           <text x="21" y="25.4" class="dnl">${esc(baseNote)}</text>
         </svg>
-        <div class="rdleg">${legend}</div>
+        <div class="rdleg">${legend}${foot
+          ?`<div class="lgnote">${esc(foot)}</div>`:''}</div>
       </div></div>`;
   };
   /* how many DOCUMENTS stand at this AWPT answer today */
@@ -3432,8 +3583,19 @@ function buildPlanAnalysis(kind){
      different meanings of "submitted" side by side is not a summary, it is a
      contradiction, so they now say plainly which question each answers. */
   const nTotal=T.n;
-  const nMet=T.done;                          /* met THIS plan's commitment */
-  const nOut=T.n-T.done;
+  /* THE PLAIN QUESTION FIRST: has this document gone to AWPT at all, yes or no.
+     This donut used to answer a subtler one — was the commitment kept — which
+     put a document submitted in May and returned RWC on the "not met" side. That
+     is a fair thing to measure, and the curve and the Days-late column still do
+     it, but it is not what "submitted" means to somebody reading a summary. */
+  const nSent=rows.filter(x=>((x.doc&&x.doc.awptSubmitted)||'').trim()!=='').length;
+  const nNot=T.n-nSent;
+  /* AND SAY SO ON THE PAGE. The table below this donut, the Days late column and
+     the curve all count only a submission that answers THIS commitment, which is
+     a smaller number. Printing 31 above a table showing 23 with no explanation is
+     the single thing a reader would seize on, and the tooltip that explained it
+     does not exist on paper. */
+  const nKept=T.done;
   /* where each of the same documents stands with AWPT today */
   const rnc=stAt('RNC'), rwc=stAt('RWC'), ur=stAt('Awaiting reply'),
         repl=stAt('Replied'), hold=stAt('On hold'), never=stAt('Not submitted');
@@ -3481,11 +3643,17 @@ function buildPlanAnalysis(kind){
       esc(weekLabel(weeks[weeks.length-1].weekStart)):''}, oldest committed date first.
       Across every revision these documents have ever been through, AWPT has
       answered ${A.answered} time${A.answered===1?'':'s'} — ${A.rwc} with comments
-      and ${A.rnc} with none.</div>
+      and ${A.rnc} with none.${A.inferred?` Of those, ${A.inferred} verdict${
+      A.inferred===1?' was':'s were'} not recorded by AWPT but worked out from
+      whether HESCO resubmitted; they are marked ~ in the table and should be
+      confirmed before this is relied on.`:''}</div>
     <div class="rdset">
-      ${donut('Against the commitment',nTotal,'on the plan',[
-        {t:'Commitment met',      n:nMet,c:'#0a7a44'},
-        {t:'Still outstanding',   n:nOut,c:'#6b7f92'}])}
+      ${donut('Submitted to AWPT',nTotal,'on the plan',[
+        {t:'Submitted',     n:nSent,c:'#0a7a44'},
+        {t:'Not submitted', n:nNot, c:'#6b7f92'}],
+        'Any submission on record, whenever it was made. '+nKept+' of these '+
+        'answer the date committed in this plan — that is the figure the table '+
+        'below, the Days late column and the curve count.')}
       ${donut('Where it stands with AWPT',nWith,'on the plan',[
         {t:'Approved — RNC',  n:rnc,  c:'#0a7a44'},
         {t:'Under review',    n:ur,   c:'#b8860b'},
@@ -3580,6 +3748,12 @@ function workingDays(from,to){
 const WINDOW={'IFI':10,'IFR':3,'AWPT-only':3};
 function reviewClock(r){
   if(r.status!=='Under review')return null;
+  /* THE CLOCK NEEDS A SUBMISSION TO RUN FROM. One document's rollup said 'Under
+     review' with the ball in Maaden's court while both the Client leg table and
+     the history showed it had never been sent to them — and on that alone it
+     would have appeared in the client-facing escalation PDF as deemed approved.
+     A deeming claim against the Client has to rest on a submission we can show. */
+  if(!hasCycle(r,'Maaden'))return null;
   const from=r.issuedDate||r.heldSince;
   if(!from)return null;
   const used=workingDays(from,today);
@@ -3596,7 +3770,16 @@ function reviewClock(r){
 function clockHTML(){
   const rows=AB.map(r=>({r,c:reviewClock(r)})).filter(x=>x.c)
     .sort((a,b)=>b.c.over-a.c.over);
-  if(!rows.length)return '<div class="empty">Nothing is with a reviewer.</div>';
+  /* dropped from the clock because no Client submission evidences them — named
+     here so the contradiction gets fixed rather than quietly disappearing */
+  const unevidenced=AB.filter(r=>r.status==='Under review'&&!hasCycle(r,'Maaden'));
+  const warn=unevidenced.length?`<div class="hint bad" style="margin-top:8px">${
+    unevidenced.length} document${unevidenced.length===1?' is':'s are'} marked
+    under Client review with no submission to the Client on record — ${
+    unevidenced.slice(0,3).map(r=>esc(r.ref)).join(', ')}${
+    unevidenced.length>3?' and others':''}. They are left off this clock until
+    the submission is logged or the status is corrected.</div>`:'';
+  if(!rows.length)return '<div class="empty">Nothing is with a reviewer.</div>'+warn;
   const past=rows.filter(x=>x.c.over>0), deemed=past.filter(x=>x.c.k==='deemed');
   return `<div class="chart" data-chart="clock">
     <div class="pgnum" style="margin-bottom:10px"><b>${past.length}</b>
@@ -3614,7 +3797,7 @@ function clockHTML(){
     </tbody></table>
     ${rows.length>25?`<div class="hint" style="margin-top:7px">Showing 25 of ${rows.length}.</div>`:''}
     <div class="hint" style="margin-top:8px">Working days counted Sunday to Thursday, from the day after issue.
-      IFI is deemed approved after 10; IFR carries a 3-day target.</div></div>`;
+      IFI is deemed approved after 10; IFR carries a 3-day target.</div>${warn}</div>`;
 }
 function wireClock(root){
   root.querySelectorAll('[data-go]').forEach(el=>el.onclick=()=>{
@@ -4209,9 +4392,22 @@ async function loadRecovery(){
     RECOV={loaded:true,items:out};
   }catch(e){ RECOV={loaded:true,items:[]}; }
 }
+/* This panel answers the PLAIN question — has the document gone to AWPT — the
+   same one the report's first donut asks, so the two read alike. The stricter
+   "was the commitment kept" test still governs the Days late column, the curve
+   and the plan window, where it is labelled as such.
+   Known limit: a document submitted before the commitment was written scores as
+   on time here, because its submission date precedes the committed date. Nine
+   of them do. */
 function recovState(it){
   const d=AB.find(x=>x.id===it.docId);
-  const sent=(d&&(d.awptSubmitted||'').trim())||'';
+  /* A document moved to the bin is not an unmet commitment. Without this the
+     lookup returned undefined, the item read as never submitted, and it stayed
+     in the denominator — so binning one document turned a kept commitment into
+     a nameless overdue row and moved the headline percentage. planUniverse
+     drops them and reports the count; this now does the same. */
+  if(!d) return {k:'gone', sent:'', doc:null};
+  const sent=(d.awptSubmitted||'').trim();
   if(sent) return {k: sent<=it.plannedDate?'ontime':'late', sent, doc:d};
   return {k: it.plannedDate<today?'overdue':'due', sent:'', doc:d};
 }
@@ -4220,11 +4416,17 @@ function recoveryHTML(){
     /* redraw whichever screen asked for it, not just the desktop one */
     loadRecovery().then(()=>{ MOBILE?mobRender():renderDash(); });
     return '<div class="empty">Reading the plan…</div>'; }
-  const items=RECOV.items;
-  if(!items.length)
+  const all=RECOV.items;
+  if(!all.length)
     return '<div class="empty">No recovery plan loaded. Create a submission plan named '+
            '"Recovery plan" to see the comparison here.</div>';
-  const st=items.map(recovState);
+  /* commitments whose document has since been deleted leave the population
+     entirely — counting them as unmet would punish HESCO for our own bin */
+  const kept=all.map(it=>({it,s:recovState(it)})).filter(x=>x.s.k!=='gone');
+  const gone=all.length-kept.length;
+  const items=kept.map(x=>x.it), st=kept.map(x=>x.s);
+  if(!items.length)
+    return '<div class="empty">Every document on this plan has been deleted.</div>';
   const n=k=>st.filter(x=>x.k===k).length;
   const done=n('ontime')+n('late'), pct=Math.round(done/items.length*100);
 
@@ -4237,7 +4439,8 @@ function recoveryHTML(){
       <span><i class="ontime"></i>${n('ontime')} on time</span>
       <span><i class="late"></i>${n('late')} submitted late</span>
       <span><i class="overdue"></i>${n('overdue')} overdue, not submitted</span>
-      <span><i class="due"></i>${n('due')} still to come</span></div>`;
+      <span><i class="due"></i>${n('due')} still to come</span>${gone
+        ?`<span class="rcgone">${gone} deleted, left out</span>`:''}</div>`;
 
   /* by committed date */
   const byDate={};
@@ -4432,9 +4635,13 @@ function legTurnaround(leg){
   const L=leg==='hesco'?'HESCO':'Maaden', SET=DOCS(), cyc=[];
   SET.forEach(r=>(HIST[r.id]||[]).filter(h=>h.leg===L).forEach(h=>cyc.push(h)));
   if(!cyc.length)return '<div class="empty">No submissions recorded on this leg.</div>';
-  const closed=cyc.filter(h=>h.days!=null&&h.days>=0).map(h=>h.days).sort((a,b)=>a-b);
+  /* A reply dated after today has not happened. Filtering only on days>=0 let
+     two such cycles into the average and printed the future date as fact. */
+  const impossible=h=>h.days!=null&&(h.days<0||(h.responded||'')>today);
+  const closed=cyc.filter(h=>h.days!=null&&h.days>=0&&(h.responded||'')<=today)
+    .map(h=>h.days).sort((a,b)=>a-b);
   const open=cyc.filter(h=>(h.submitted||'')&&!(h.responded||''));
-  const bad=cyc.filter(h=>h.days!=null&&h.days<0).length;
+  const bad=cyc.filter(impossible).length;
   const avg=closed.length?Math.round(closed.reduce((a,b)=>a+b,0)/closed.length*10)/10:null;
   const med=closed.length?closed[Math.floor(closed.length/2)]:null;
   const waiting=open.map(h=>days(h.submitted,today)).sort((a,b)=>b-a);
@@ -4448,7 +4655,8 @@ function legTurnaround(leg){
       ${cell('Waiting now',waiting.length?waiting[0]+' d':'—',
              waiting.length?'the oldest of '+waiting.length+' open':'nothing open')}
     </div>${bad?`<div class="hint bad" style="margin-top:8px">${bad} cycle(s) carry a reply
-      dated before the submission — the dates need checking.</div>`:''}`;
+      dated before the submission, or after today — impossible either way, left out
+      of these figures, and the dates need checking.</div>`:''}`;
 }
 function legDashHTML(leg){
   const plan=leg==='hesco'
@@ -4562,9 +4770,22 @@ function ensureXLSX(){return new Promise((res,rej)=>{
   if(window.XLSX)return res(window.XLSX);
   const s=document.createElement('script');s.src=XLSX_CDN;
   s.onload=()=>res(window.XLSX);s.onerror=()=>rej(new Error('no xlsx'));document.head.appendChild(s);});}
+/* A spreadsheet leaves the building the same way the PDF does, so it has to
+   speak the same language. This emitted the STORED value for every column,
+   which put the internal vocabulary — 'Code B', 'Deemed', 'Replied' — into 70
+   cells of the Status column, grades that do not exist in Maaden's system and
+   that no other surface shows. Same treatment the printed report gives. */
+function exportCell(r,c){
+  let v=c.calc?c.calc(r):(r[c.k]??'');
+  if(c.k==='status')v=statusText(v)||v;
+  if(c.k==='discipline')v=PRINT_DISC[v]||v;
+  if(c.k==='mOut')v=maadenLabel(v);
+  if(c.k==='hOut'&&isInferred(lastCycle(r,'HESCO')))v=v+' ~';
+  return v;
+}
 function tableAOA(){
   const cs=visCols(), rows=GRID?GRID.rows:AB;
-  return [cs.map(c=>c.t)].concat(rows.map(r=>cs.map(c=>c.calc?c.calc(r):(r[c.k]??''))));
+  return [cs.map(c=>c.t)].concat(rows.map(r=>cs.map(c=>exportCell(r,c))));
 }
 async function exportXLSX(){
   try{
@@ -4600,7 +4821,16 @@ function importExcel(){
       if(!map.some(Boolean))return msgBox('Import from Excel','',
         'None of the headings matched. Use the same headings as the register — '+
         'export it first if you want a template.',[['Close',null,'primary']]);
-      const dn=map.indexOf('ref');
+      /* The key column is 'docNumber'. Looking for 'ref' found nothing, ever —
+         no column has that key — so dn was always -1, the "does this document
+         already exist" lookup never ran, and re-importing the register's own
+         export inserted all 149 rows a second time. */
+      const dn=map.indexOf('docNumber');
+      if(dn<0)return msgBox('Import from Excel','',
+        'The sheet has no <b>Document number</b> column, so there is no way to tell '+
+        'an update from a new document. Nothing has been imported. Add that column '+
+        '— exporting the register first gives you the right headings — and try again.',
+        [['Close',null,'primary']]);
       msgBox('Import '+(aoa.length-1)+' row(s)?','',
         `Matching on <b>Document number</b>: rows that already exist are updated, new numbers are added.
          Columns matched: ${map.filter(Boolean).map(k=>esc(COLBY[k].t)).join(', ')}.`,
@@ -4609,11 +4839,14 @@ function importExcel(){
           let upd=0,add=0;
           for(let i=1;i<aoa.length;i++){
             const line=aoa[i]; if(!line.join('').trim())continue;
-            const no=dn>=0?String(line[dn]||'').trim():'';
-            let row=no?AB.find(r=>r.ref===no):null;
+            const no=String(line[dn]||'').trim();
+            if(!no)continue;                    /* no key, no safe way to match */
+            let row=AB.find(r=>(r.docNumber||'').trim()===no);
             if(!row){
-              const base={sn:String(AB.length+1),ref:no,title:'',
-                discipline:'',reviewClass:'',status:'Not Submitted'};
+              /* 'Not Submitted' is not one of STATUSES — it would have been an
+                 unrecognised value on every imported row */
+              const base={sn:String(AB.length+1),docNumber:no,title:'',
+                discipline:'',reviewClass:'',status:'Not issued'};
               row=await apiInsert(base); AB.push(row); txPush({t:'add',id:row.id,row:base}); add++;
             } else upd++;
             for(let j=0;j<map.length;j++){
@@ -4967,7 +5200,11 @@ function card(r,i){
 }
 function mobList(){
   const rows=mobRows();
-  const chips=[MOB.fd,MOB.fs&&('Code '+MOB.fs),MOB.fageL&&(MOB.fageL+' with reviewer')].filter(Boolean);
+  /* MOB.fs holds the STORED state, so 'Code '+it produced both a vocabulary leak
+     and nonsense — "Code Awaiting reply". Same words the buttons use. */
+  const chips=[MOB.fd,
+    MOB.fs&&(LEG==='maaden'?maadenLabel(MOB.fs):statusText(MOB.fs)),
+    MOB.fageL&&(MOB.fageL+' with reviewer')].filter(Boolean);
   const applied=chips.length?`<div class="applied">
       <span>${chips.map(esc).join('</span><span>')}</span>
       <button id="mclear">Clear</button></div>`:'';
@@ -5598,7 +5835,15 @@ let NOTIF_MAX=0, LIVEWS=null, LIVE_OK=false, _syncT=null, _pollT=null,
 /* Reload the data other people can change, then redraw. Deliberately does not
    touch window positions, filters or the current selection. */
 async function syncNow(opts){
-  if(!LIVE||_syncing)return; _syncing=true;
+  if(!LIVE||_syncing)return;
+  /* NEVER redraw over an open cell editor. refresh() rebuilds the table, which
+     removes the editor input from the DOM; a removed element fires no blur, so
+     the commit never ran, the typed text was thrown away, and GRID.editing was
+     left set for good — after which the grid took no more keyboard at all.
+     Somebody else's edit arrives ~700ms after they make it, so this was a
+     coin-toss on every cell typed while another person was working. */
+  if(GRID&&GRID.editing){ setTimeout(syncSoon,1500); return; }
+  _syncing=true;
   try{
     const before=NOTIF_MAX;
     const [docs,notifs]=await Promise.all([
@@ -5887,6 +6132,13 @@ function editHistRow(r,id){
       const sent=document.getElementById('ehSent').value;
       const resp=document.getElementById('ehResp').value;
       const out=resp?document.getElementById('ehOut').value.trim():'';
+      /* the same three impossibilities the Log-a-submission box refuses; this
+         path had only the resp>=sent check, buried in the days calculation, so
+         a backwards or future date saved silently and was averaged as fact */
+      if(!sent)return toast('A date sent is needed');
+      if(resp&&resp<sent)return toast('The reply cannot be dated before the submission');
+      if(resp&&resp>today)return toast('The reply cannot be dated in the future');
+      if(sent>today)return toast('The submission cannot be dated in the future');
       try{
         await api('lod_history?id=eq.'+id,{method:'PATCH',body:JSON.stringify({
           submitted:sent,responded:resp,status:out,
@@ -6016,6 +6268,9 @@ function logCycle(r){
       const resp=document.getElementById('lgResp').value;
       const out=document.getElementById('lgOut').value;
       if(!rev||!sent)return toast('A revision and a date sent are needed');
+      if(resp&&resp<sent)return toast('The reply cannot be dated before the submission');
+      if(resp&&resp>today)return toast('The reply cannot be dated in the future');
+      if(sent>today)return toast('The submission cannot be dated in the future');
       try{
         await api('lod_history',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({
           docId:r.id,leg,rev,submitted:sent,responded:resp||'',status:resp?(out||''):'',
@@ -6062,10 +6317,17 @@ function historyHTML(r){
   if(!all.length)return '<div class="empty">No submission history recorded.</div>';
   const block=(rows,label,who)=>{
     if(!rows.length)return '';
-    const closed=rows.filter(x=>x.days!=null);
+    /* Only cycles that could have happened. Without the >=0 and <=today guards
+       — which legTurnaround and planAwptReview both have and this did not — a
+       reply dated before its own submission dragged the average down, and one
+       document printed "5 submissions · -3 days average". The quieter damage was
+       worse: a real case averaged 7 days where the honest figure was 14. */
+    const bad=rows.filter(x=>x.days!=null&&(x.days<0||(x.responded||'')>today));
+    const closed=rows.filter(x=>x.days!=null&&x.days>=0&&(x.responded||'')<=today);
     const avg=closed.length?Math.round(closed.reduce((t,x)=>t+x.days,0)/closed.length):null;
     const head=`<h5>${label}<span>${rows.length} submission${rows.length===1?'':'s'}${
-      avg!=null?' · '+avg+' days average':''}</span></h5>`;
+      avg!=null?' · '+avg+' days average':''}${
+      bad.length?' · '+bad.length+' cycle'+(bad.length===1?'':'s')+' left out':''}</span></h5>`;
     if(MOBILE){
       // one block per cycle — five columns will not read on a phone
       return `<div class="legblock">${head}<div class="hlist">${rows.map(x=>{
