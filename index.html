@@ -633,12 +633,23 @@ body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent)
   .cv .pl{fill:none;stroke:#6b7f92;stroke-width:1.6;stroke-dasharray:3 2;
     stroke-linejoin:round;stroke-linecap:round}
   .cv .ac{fill:none;stroke:#0a7a44;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+  /* today's actual figure, ringed in the surface colour so it reads as the
+     end of the line rather than another point on it */
+  .cv .nowdot{fill:#0a7a44;stroke:#fff;stroke-width:1}
   .cv text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:5.4px}
   .cv .cvy{fill:#777;text-anchor:end}
   .cv .cvx{fill:#777;font-size:5px}
+  /* every label is drawn with a white halo behind it, so it stays legible
+     wherever a line happens to run — they were sitting straight on the lines */
+  .cv text{paint-order:stroke;stroke:#fff;stroke-width:2.4px;stroke-linejoin:round}
   .cv .cve{font-size:6px;font-weight:700}
   .cv .pl-t{fill:#5c6b7a}
   .cv .ac-t{fill:#0a7a44}
+  /* the shortfall at today, drawn as the distance between the two lines --
+     the gap is the whole point of the chart, so it gets its own mark */
+  .cv .gap{stroke:#b3241f;stroke-width:1.6;stroke-linecap:round}
+  .cv .gapc{stroke:#b3241f;stroke-width:.8;stroke-linecap:round}
+  .cv .gp-t{fill:#b3241f}
   .rdempty{font-size:6.2pt;color:#777;font-style:italic;padding:6pt 0}
   .lgnote{font-size:5.6pt;color:#777;margin-top:1.5pt}
   .rdleg{flex:1;min-width:0}
@@ -1113,6 +1124,7 @@ table.rctbl tr[data-go]:hover td{background:var(--chip)}
   box-shadow:0 0 0 3px rgba(168,85,247,.14)}
 .legtab.on b{color:#e9d5ff}
 .lockmark{font-size:10.5px;color:var(--goodtext);white-space:nowrap}
+tr.pgone td{background:rgba(214,69,69,.07)}
 </style>
 </head>
 <body>
@@ -1343,7 +1355,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-31 · v84';
+const BUILD='LOD 2026-08-31 · v90';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2255,7 +2267,8 @@ async function openBin(){
           <td><button class="btn" data-restore="${r.id}">Restore</button></td></tr>`).join('')}
       </tbody></table>
       <div class="hint" style="margin-top:10px">${list.length} document(s) in the bin.
-        Their revision history is intact and comes back with them.</div>`
+        Their revision history is intact and comes back with them. A recovery-plan
+        commitment does not — re-add the document to its week afterwards.</div>`
       :'<div class="empty">The bin is empty.</div>'}</div></div>`;
     w.body.querySelectorAll('[data-restore]').forEach(b=>b.onclick=async()=>{
       const id=+b.dataset.restore, i=list.findIndex(x=>x.id===id);
@@ -2263,7 +2276,7 @@ async function openBin(){
       const row={...list[i]}; delete row.deletedAt; delete row.deletedBy;
       AB.push(row); list.splice(i,1);
       await logAct('restore',row); await loadRevs(); refresh(); draw();
-      toast(esc(row.ref)+' restored');});
+      toast(esc(row.ref)+' restored — add it back to the plan if it was on one');});
   };
   draw();
 }
@@ -2725,9 +2738,14 @@ async function openPlans(){
           <th>Responsible</th><th>Target</th><th>Progress</th><th>Code</th><th>History</th></tr></thead><tbody>
         ${items.map(it=>{const r=AB.find(a=>a.id===it.docId)||{};
           const k=r.status||'Not Submitted';
-          return `<tr data-i="${it.id}">
-            <td class="mono">${esc(r.ref||'—')}</td>
-            <td>${esc(r.title||'')}</td>
+          /* A document deleted from the register used to leave a blank row here,
+             which invites somebody to tidy it away — and removing the row
+             removes the commitment with it. Say what it is instead. */
+          const gone=!r.id;
+          return `<tr data-i="${it.id}"${gone?' class="pgone"':''}>
+            <td class="mono">${gone?'<span class="hint">deleted</span>':esc(r.ref||'—')}</td>
+            <td>${gone?'<span class="hint">This document is in the bin. Restore it from '+
+                  'the menu, or remove this row to drop the commitment.</span>':esc(r.title||'')}</td>
             <td class="hint">${esc(SHORT_DISC[r.discipline]||r.discipline||'')}</td>
             <td><input class="f pa" data-i="${it.id}" list="paList" autocomplete="off"
               placeholder="Type a name" value="${esc(it.assigneeId?assigneeName(it.assigneeId):'')}"
@@ -3268,49 +3286,76 @@ function buildPlanAnalysis(kind){
      which a donut can only imply. Both lines are labelled at their end, so the
      chart reads without the legend and without colour. */
   const curve=(title,rs)=>{
-    const dts=[...new Set(rs.map(x=>x.it.plannedDate).filter(Boolean))].sort();
-    if(!dts.length)return `<div class="rdo"><h4>${esc(title)}</h4>
+    const set=new Set(rs.map(x=>x.it.plannedDate).filter(Boolean));
+    if(!set.size)return `<div class="rdo"><h4>${esc(title)}</h4>
       <div class="rdempty">No committed dates yet.</div></div>`;
-    if(dts[dts.length-1]<today)dts.push(today);
+    set.add(today);                       /* today is always a point on the line */
+    const dts=[...set].sort();
     const done=rs.filter(x=>x.st.k==='done'||x.st.k==='late');
     const P=dts.map(d=>rs.filter(x=>x.it.plannedDate&&x.it.plannedDate<=d).length);
     const A=dts.map(d=>done.filter(x=>(x.st.sub||'')&&x.st.sub<=d).length);
     const top=Math.max(1,P[P.length-1]);
     /* viewBox units; room on the right for the end labels */
-    const L=13,R=34,Tp=7,B=13,W=200,H=70;
-    const px=i=>L+(dts.length<2?0:i*(W-L-R)/(dts.length-1));
+    const L=13,R=26,Tp=9,B=13,W=200,H=70;
+    /* A REAL time axis, not one step per date. Spacing the dates evenly put the
+       today line on the next committed date instead of on today, and it also
+       lied about the shape — three days and one day were drawn the same width. */
+    const t=d=>Date.parse(d), t0=t(dts[0]), t1=t(dts[dts.length-1]);
+    const span=Math.max(1,t1-t0);
+    const px=d=>L+((t(d)-t0)/span)*(W-L-R);
     const py=v=>H-B-(v/top)*(H-Tp-B);
-    const path=a=>a.map((v,i)=>(i?'L':'M')+px(i).toFixed(1)+' '+py(v).toFixed(1)).join(' ');
-    const dot=(a,c)=>a.map((v,i)=>`<circle cx="${px(i).toFixed(1)}" cy="${py(v).toFixed(1)}"
+    /* The planned line runs the whole programme; the ACTUAL line stops at today,
+       because there is no actual beyond today. Drawing it on to the last
+       committed date claimed we already knew what would be submitted in the
+       future — a forecast dressed as a fact. */
+    const upto=dts.filter(d=>d<=today);
+    const iNow=upto.length-1;
+    const path=(a,ds)=>ds.map((d,i)=>(i?'L':'M')+px(d).toFixed(1)+' '+py(a[i]).toFixed(1)).join(' ');
+    const dot=(a,ds,c)=>ds.map((d,i)=>`<circle cx="${px(d).toFixed(1)}" cy="${py(a[i]).toFixed(1)}"
       r="1.5" fill="${c}"/>`).join('');
-    const nowX=(()=>{ const i=dts.findIndex(d=>d>=today);
-      return i<0?px(dts.length-1):px(i); })();
+    const nowX=px(today);
     const day=d=>{const x=new Date(d);return String(x.getDate()).padStart(2,'0')+' '+
       x.toLocaleDateString('en-GB',{month:'short'});};
-    const lastP=P[P.length-1], lastA=A[A.length-1];
+    const lastP=P[P.length-1];
     /* the legend measures WHAT IS DUE BY TODAY — the line runs on to the end of
        the programme, and reading one against the other would flatter the figure */
     const dueP=rs.filter(x=>x.it.plannedDate&&x.it.plannedDate<=today).length;
     const dueA=done.filter(x=>x.it.plannedDate&&x.it.plannedDate<=today).length;
+    /* what the red bar spans: the two lines as they stand at today */
+    const gap=Math.max(0,P[iNow]-A[iNow]);
     return `<div class="rdo"><h4>${esc(title)}</h4>
       <svg class="cv" viewBox="0 0 ${W} ${H}" role="img"
-        aria-label="${lastA} of ${lastP} submitted against the committed dates">
+        aria-label="${A[iNow]} submitted of the ${P[iNow]} due by today, ${lastP} committed in all">
         <line class="ax" x1="${L}" y1="${H-B}" x2="${W-R}" y2="${H-B}"/>
         <line class="ax" x1="${L}" y1="${Tp}" x2="${L}" y2="${H-B}"/>
         <text class="cvy" x="${L-2}" y="${py(top)+2}">${top}</text>
         <text class="cvy" x="${L-2}" y="${H-B+2}">0</text>
         <line class="now" x1="${nowX.toFixed(1)}" y1="${Tp}" x2="${nowX.toFixed(1)}" y2="${H-B}"/>
-        <text class="cvx" x="${nowX.toFixed(1)}" y="${H-B+9}" text-anchor="middle">today</text>
+        <text class="cvx" x="${nowX.toFixed(1)}" y="${H-B+9}" text-anchor="middle">${day(today)}</text>
         <text class="cvx" x="${L}" y="${H-B+9}">${day(dts[0])}</text>
-        <path class="pl" d="${path(P)}"/>${dot(P,'#6b7f92')}
-        <path class="ac" d="${path(A)}"/>${dot(A,'#0a7a44')}
+        ${(dts[dts.length-1]!==today && (W-R)-nowX>22)
+           ?`<text class="cvx" x="${W-R}" y="${H-B+9}"
+             text-anchor="end">${day(dts[dts.length-1])}</text>`:''}
+        <path class="pl" d="${path(P,dts)}"/>${dot(P,dts,'#6b7f92')}
+        <path class="ac" d="${path(A.slice(0,iNow+1),upto)}"/>${
+          dot(A.slice(0,iNow+1),upto,'#0a7a44')}
+        ${gap>0?`<line class="gap" x1="${nowX.toFixed(1)}" y1="${py(A[iNow]).toFixed(1)}"
+            x2="${nowX.toFixed(1)}" y2="${py(P[iNow]).toFixed(1)}"/>
+          <line class="gapc" x1="${(nowX-1.8).toFixed(1)}" y1="${py(P[iNow]).toFixed(1)}"
+            x2="${(nowX+1.8).toFixed(1)}" y2="${py(P[iNow]).toFixed(1)}"/>
+          <text class="cve gp-t" x="${(nowX+3.4).toFixed(1)}"
+            y="${((py(A[iNow])+py(P[iNow]))/2+2).toFixed(1)}">${gap} behind</text>`:''}
+        <circle class="nowdot" cx="${nowX.toFixed(1)}" cy="${py(A[iNow]).toFixed(1)}" r="2.4"/>
         <text class="cve pl-t" x="${(W-R+3)}" y="${py(lastP)+2}">${lastP} planned</text>
-        <text class="cve ac-t" x="${(W-R+3)}" y="${py(lastA)+2}">${lastA} actual</text>
+        <text class="cve ac-t" x="${(nowX-3).toFixed(1)}" y="${(py(A[iNow])+8).toFixed(1)}"
+          text-anchor="end">${A[iNow]} actual</text>
       </svg>
       <div class="rdleg">
+        <div class="lg"><i style="background:#6b7f92"></i><span>Due by today</span>
+          <b>${dueP}</b><u>100%</u></div>
         <div class="lg"><i style="background:#0a7a44"></i><span>Submitted by today</span>
           <b>${dueA}</b><u>${dueP?Math.round(dueA/dueP*100):0}%</u></div>
-        <div class="lg"><i style="background:#6b7f92"></i><span>Behind by today</span>
+        <div class="lg"><i style="background:#b3241f"></i><span>Behind by today</span>
           <b>${dueP-dueA}</b><u>${dueP?Math.round((dueP-dueA)/dueP*100):0}%</u></div>
         <div class="lgnote">${dueP} of ${lastP} committed dates have passed</div>
       </div></div>`;
@@ -3329,7 +3374,10 @@ function buildPlanAnalysis(kind){
       off-=p;                                          /* clockwise */
       return c;
     }).join('');
-    const legend=segs.map(x=>`<div class="lg"><i style="background:${x.c}"></i>
+    /* a state nobody is in is noise, not information */
+    const shown=segs.filter(x=>x.n>0);
+    const legend=(shown.length?shown:segs.slice(0,1)).map(x=>
+      `<div class="lg"><i style="background:${x.c}"></i>
       <span>${esc(x.t)}</span><b>${x.n}</b><u>${tot?Math.round(x.n/tot*100):0}%</u></div>`).join('');
     return `<div class="rdo"><h4>${esc(title)}</h4>
       <div class="rdrow">
@@ -3343,13 +3391,19 @@ function buildPlanAnalysis(kind){
   };
   /* how many DOCUMENTS stand at this AWPT answer today */
   const stAt=k=>{const r=A.states.find(x=>x.k===k);return r?r.n:0;};
-  /* the three bases, each stated on its own group */
+  /* Both donuts split the SAME population — every document on the plan — so the
+     two can be read against each other. They previously used different bases:
+     one counted documents that met this plan's commitment, the next counted
+     documents that had ever been to AWPT, and the second was the larger. Two
+     different meanings of "submitted" side by side is not a summary, it is a
+     contradiction, so they now say plainly which question each answers. */
   const nTotal=T.n;
-  const nSubmitted=T.done;                    /* has been issued to AWPT */
-  const nNot=T.n-T.done;
-  /* of those issued, where the review stands */
-  const rnc=stAt('RNC'), rwc=stAt('RWC'), ur=stAt('Awaiting reply');
-  const nReviewed=rnc+rwc+ur;
+  const nMet=T.done;                          /* met THIS plan's commitment */
+  const nOut=T.n-T.done;
+  /* where each of the same documents stands with AWPT today */
+  const rnc=stAt('RNC'), rwc=stAt('RWC'), ur=stAt('Awaiting reply'),
+        repl=stAt('Replied'), hold=stAt('On hold'), never=stAt('Not submitted');
+  const nWith=rnc+rwc+ur+repl+hold+never;     /* closes on the same total */
   /* what the programme asked for by today, against what actually went */
   const dueByNow=rows.filter(x=>x.it.plannedDate&&x.it.plannedDate<=today);
   const goneByNow=dueByNow.filter(x=>x.st.k==='done'||x.st.k==='late');
@@ -3395,13 +3449,16 @@ function buildPlanAnalysis(kind){
       answered ${A.answered} time${A.answered===1?'':'s'} — ${A.rwc} with comments
       and ${A.rnc} with none.</div>
     <div class="rdset">
-      ${donut('Submission',nTotal,'tracked',[
-        {t:'Submitted to AWPT',n:nSubmitted,c:'#0a7a44'},
-        {t:'Not submitted',    n:nNot,      c:'#6b7f92'}])}
-      ${donut('AWPT review',nReviewed,'issued',[
-        {t:'Approved — RNC', n:rnc,c:'#0a7a44'},
-        {t:'Under review',   n:ur, c:'#b8860b'},
-        {t:'Returned — RWC', n:rwc,c:'#b3241f'}])}
+      ${donut('Against the commitment',nTotal,'on the plan',[
+        {t:'Commitment met',      n:nMet,c:'#0a7a44'},
+        {t:'Still outstanding',   n:nOut,c:'#6b7f92'}])}
+      ${donut('Where it stands with AWPT',nWith,'on the plan',[
+        {t:'Approved — RNC',  n:rnc,  c:'#0a7a44'},
+        {t:'Under review',    n:ur,   c:'#b8860b'},
+        {t:'Returned — RWC',  n:rwc,  c:'#b3241f'},
+        {t:'Reviewed, no code',n:repl,c:'#5c6b7a'},
+        {t:'On hold',         n:hold, c:'#7030a0'},
+        {t:'Never submitted', n:never,c:'#6b7f92'}])}
       ${curve('Planned against actual',rows)}
     </div>
     <table class="rtbl"><thead><tr>
@@ -4946,10 +5003,11 @@ function mobPlan(){
   const card=it=>{
     const r=AB.find(a=>a.id===it.docId)||{};
     const s=itemState(it,plan);
+    const gone=!r.id;                     /* the document is in the bin */
     return `<article class="dcard k-${(r.status||'Not Submitted')==='Not Submitted'?'N':r.status}" data-pi="${it.id}">
-      <div class="dc-h"><span class="dc-no">${esc(r.ref||'—')}</span>
+      <div class="dc-h"><span class="dc-no">${gone?'deleted':esc(r.ref||'—')}</span>
         <span class="pstate ${s.cls}">${esc(s.label)}</span></div>
-      <h3 class="dc-t">${esc(r.title||'')}</h3>
+      <h3 class="dc-t">${gone?'This document is in the bin — restore it, or remove this row to drop the commitment.':esc(r.title||'')}</h3>
       <div class="dc-m"><span>${plan&&plan.kind==='review'&&it.baseHolder
           ?'With '+esc(it.baseHolder):esc(SHORT_DISC[r.discipline]||r.discipline||'')}</span>
         <i class="sep"></i><span>${it.assigneeId?esc(assigneeName(it.assigneeId)):'Not assigned'}</span>
@@ -5152,7 +5210,9 @@ function mobMore(){
     </div>
     ${canAdmin()?`<div class="spec"><h4>Team</h4>
       <div class="srow tap" data-mm="people"><span class="l">People</span>
-        <span class="v">Who has signed in</span></div></div>`:''}
+        <span class="v">Who has signed in</span></div>
+      <div class="srow tap" data-mm="bin"><span class="l">Deleted documents</span>
+        <span class="v">Restore from the bin</span></div></div>`:''}
     <div class="spec"><h4>About</h4>
     <div class="srow"><span class="l">Documents</span><span class="v mono">${AB.length}</span></div>
     <div class="srow"><span class="l">Build</span><span class="v mono">${BUILD}</span></div></div>`;
@@ -5258,11 +5318,41 @@ function wireMob(){
   b.querySelectorAll('[data-mm]').forEach(el=>el.onclick=()=>{
     const a=el.dataset.mm;
     if(a==='people')mobPeople();
+    else if(a==='bin')mobBin();
     else if(a==='alerts')alertsBox();
     else if(a==='pdf')exportPDF(); else if(a==='csv')exportCSV(); else if(a==='xlsx')exportXLSX();
     else if(a==='theme')toggleTheme();
     else if(a==='desktop')setMobile(false,true);
     else if(a==='logout')logout();});
+}
+/* The bin on a phone. Same list and the same Restore the desktop has — a
+   deleted deliverable is kept, not erased, and an administrator can bring it
+   back with its whole revision history. */
+async function mobBin(){
+  if(!canAdmin())return toast('Only an administrator can restore documents');
+  let list=[];
+  try{ list=await api('lod_docs?deletedAt=not.is.null&order=deletedAt.desc'); }catch(e){}
+  const row=r=>`<div class="tlrow" data-bin="${r.id}">
+      <div><b>${esc(r.ref||'—')}</b>
+        <div style="font-size:11px;color:var(--muted)">${esc(r.title||'')}</div>
+        <div style="font-size:10.5px;color:var(--muted)">deleted ${
+          esc((r.deletedAt||'').replace('T',' ').slice(0,16))}${
+          r.deletedBy?' · '+esc(r.deletedBy):''}</div></div>
+      <button class="btn" data-restore="${r.id}">Restore</button></div>`;
+  msgBox('Deleted documents','', list.length
+    ? list.map(row).join('')+
+      `<div class="hint" style="margin-top:10px">${list.length} in the bin. The
+        revision history comes back with the document. A recovery-plan commitment
+        does not — re-add it to the week afterwards.</div>`
+    : '<div class="empty">The bin is empty.</div>',
+    [['Close',null,'primary']]);
+  document.querySelectorAll('[data-restore]').forEach(b=>b.onclick=async()=>{
+    const id=+b.dataset.restore, i=list.findIndex(x=>x.id===id); if(i<0)return;
+    const row2={...list[i]}; delete row2.deletedAt; delete row2.deletedBy;
+    await apiUnbin(id); AB.push(row2); list.splice(i,1);
+    await logAct('restore',row2); await loadRevs(); refresh();
+    closeMsg(); toast(esc(row2.ref)+' restored — add it back to the plan if it was on one');
+  });
 }
 async function mobPeople(){
   const list=await loadPeople();
