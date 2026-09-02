@@ -1355,7 +1355,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-31 · v90';
+const BUILD='LOD 2026-08-31 · v91';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1859,7 +1859,16 @@ const legOutcome=(r,leg)=>{const c=lastCycle(r,leg);
 function legState(r,leg){
   if(isHold(r))return 'On hold';
   const t=legRow(r,leg);
-  if(t)return t.outcome||'Not submitted';
+  if(t){
+    if(t.outcome)return t.outcome;
+    /* A reply date with no verdict is a MISSING CODE, not an unsent document.
+       Falling through to 'Not submitted' here told the opposite of the truth
+       and made the gap invisible — the one card meant to catch it could never
+       fill, because this path runs first. */
+    if((t.replied||'').trim())return 'Replied';
+    if((t.sent||'').trim())return 'Awaiting reply';
+    return 'Not submitted';
+  }
   const c=lastCycle(r,leg);
   if(!c)return 'Not submitted';
   if(!c.responded)return 'Awaiting reply';
@@ -4257,13 +4266,24 @@ function niceDate(d){
    The recovery plan is a HESCO-to-AWPT commitment, so it appears
    on that leg only.
    ============================================================ */
-const LEGSTATE=leg=>leg==='hesco'
-  ? [{k:'RNC',           t:'Cleared by AWPT',  s:'reviewed with no comments',        c:'#0f9d58'},
+/* "Reviewed" is not a stage of the work — it is the gap where a reply date was
+   logged and the verdict never was. On AWPT-only documents the code is inferred
+   from the resubmission pattern, so they cannot land here either, and in 566
+   cycles nothing ever has. A permanent 0% card teaches people to read past it,
+   so it is hidden until it actually has something in it — at which point it
+   reappears, named for what it is, and the cards still close at 100%. */
+const HESCO_STATES=
+    [{k:'RNC',           t:'Cleared by AWPT',  s:'reviewed with no comments',        c:'#0f9d58'},
      {k:'RWC',           t:'Back with HESCO',  s:'returned with comments to resolve',c:'#d64545'},
-     {k:'Replied',       t:'Reviewed',         s:'answered, no code — AWPT-only',    c:'#6b7f92'},
+     {k:'Replied',       t:'Reply logged',     s:'no code recorded — needs a verdict',c:'#6b7f92'},
      {k:'Awaiting reply',t:'With AWPT now',    s:'submitted, awaiting the review',   c:'#f0b429'},
      {k:'On hold',       t:'On hold',          s:'held pending prerequisites',       c:HOLDCOLOR},
-     {k:'Not submitted', t:'Never submitted',  s:'no cycle to AWPT at all',          c:'#8c9aa8'}]
+     {k:'Not submitted', t:'Never submitted',  s:'no cycle to AWPT at all',          c:'#8c9aa8'}];
+/* judged over every document, not the filtered view, so the card does not
+   appear and vanish as somebody changes a filter */
+const LEGSTATE=leg=>leg==='hesco'
+  ? HESCO_STATES.filter(x=>x.k!=='Replied'
+      ||(AB||[]).some(r=>legState(r,'HESCO')==='Replied'))
   : [{k:'Code A',   t:'A — Accepted',              s:'accepted',                          c:'#0f9d58'},
      {k:'Code B',   t:'C — Proceed with exceptions',s:'to the next submission and revision',c:'#6fc38a'},
      {k:'Rejected', t:'R — Do not proceed',         s:'revise as noted and resubmit',      c:'#d64545'},
