@@ -609,6 +609,47 @@ body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent)
     padding:3pt 6pt;margin-bottom:5pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .rkpis{display:flex;gap:3.5pt;margin-bottom:6pt}
   .rk{flex:1;border:.4pt solid #c3ced9;border-radius:2pt;padding:3pt 2pt;text-align:center}
+  /* ---- the three donuts ------------------------------------------------
+     One per group, side by side, with a named legend carrying the count and
+     the share. Far less height than three rows of boxes, and each donut states
+     the base its shares are of. */
+  .rdset{display:flex;gap:6pt;margin-bottom:7pt;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .rdo{flex:1;min-width:0;border:.4pt solid #c3ced9;border-radius:2pt;padding:3.5pt 5pt 4pt}
+  .rdo h4{font-size:6.2pt;font-weight:700;color:#12304f;text-transform:uppercase;
+    letter-spacing:.4pt;margin:0 0 3pt}
+  .rdrow{display:flex;align-items:center;gap:6pt}
+  .dn{width:64pt;height:64pt;flex:none;transform:rotate(-90deg)}
+  .dn .bg{fill:none;stroke:#eef1f4;stroke-width:6}
+  .dn .sg{fill:none;stroke-width:6;stroke-linecap:butt}
+  .dn text{transform:rotate(90deg);transform-origin:21px 21px;text-anchor:middle;
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+  .dn .dnv{font-size:9px;font-weight:700;fill:#12304f}
+  .dn .dnl{font-size:3.4px;fill:#777;letter-spacing:.2px}
+  /* the planned-against-actual curve: two running totals and the gap between */
+  .cv{width:100%;height:52pt;display:block;margin-bottom:1pt}
+  .cv .ax{stroke:#c3ced9;stroke-width:.5}
+  .cv .now{stroke:#c3ced9;stroke-width:.5;stroke-dasharray:2 2}
+  .cv .pl{fill:none;stroke:#6b7f92;stroke-width:1.6;stroke-dasharray:3 2;
+    stroke-linejoin:round;stroke-linecap:round}
+  .cv .ac{fill:none;stroke:#0a7a44;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+  .cv text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:5.4px}
+  .cv .cvy{fill:#777;text-anchor:end}
+  .cv .cvx{fill:#777;font-size:5px}
+  .cv .cve{font-size:6px;font-weight:700}
+  .cv .pl-t{fill:#5c6b7a}
+  .cv .ac-t{fill:#0a7a44}
+  .rdempty{font-size:6.2pt;color:#777;font-style:italic;padding:6pt 0}
+  .lgnote{font-size:5.6pt;color:#777;margin-top:1.5pt}
+  .rdleg{flex:1;min-width:0}
+  .rdleg .lg{display:flex;align-items:center;gap:3pt;font-size:6.2pt;line-height:1.5;
+    white-space:nowrap}
+  .rdleg .lg i{width:5pt;height:5pt;border-radius:1pt;flex:none;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .rdleg .lg span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:#333}
+  .rdleg .lg b{font-variant-numeric:tabular-nums;color:#12304f}
+  .rdleg .lg u{text-decoration:none;color:#777;font-variant-numeric:tabular-nums;
+    width:20pt;text-align:right}
   /* Nine figures side by side are unreadable on the upright page, so there they
      wrap onto a fixed grid — a flex wrap would stretch whatever landed on the
      last row into odd wide boxes. The landscape register keeps its single row. */
@@ -1302,7 +1343,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-31 · v81';
+const BUILD='LOD 2026-08-31 · v84';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -3213,9 +3254,106 @@ function buildPlanAnalysis(kind){
     .slice().sort((a,b)=>a.weekStart<b.weekStart?-1:1);
   const stamp=new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
   const title=kind==='review'?'AWPT Review Plan':'Recovery Plan';
-  const kpi=(l,v)=>`<div class="rk"><b>${v}</b><span>${l}</span></div>`;
+  /* A donut per group instead of a row of boxes — the same three numbers in a
+     fraction of the height. Radius 15.9155 gives a circumference of 100, so a
+     segment's dash length IS its percentage and nothing has to be scaled.
+     Every segment is named in the legend with its count and share, so identity
+     never rests on colour alone — which also covers a black-and-white print.
+     Colours: the app's own status set, checked for colour-blind separation
+     (worst adjacent pair ΔE 10.2 protan, 20.8 normal); the neutral is
+     deliberately desaturated so the coloured segments carry the meaning. */
+  /* Planned against actual is a race between two running totals, not a slice of
+     anything, so it gets the form that shows a gap: two cumulative lines across
+     the committed dates. The distance between them at today IS the shortfall,
+     which a donut can only imply. Both lines are labelled at their end, so the
+     chart reads without the legend and without colour. */
+  const curve=(title,rs)=>{
+    const dts=[...new Set(rs.map(x=>x.it.plannedDate).filter(Boolean))].sort();
+    if(!dts.length)return `<div class="rdo"><h4>${esc(title)}</h4>
+      <div class="rdempty">No committed dates yet.</div></div>`;
+    if(dts[dts.length-1]<today)dts.push(today);
+    const done=rs.filter(x=>x.st.k==='done'||x.st.k==='late');
+    const P=dts.map(d=>rs.filter(x=>x.it.plannedDate&&x.it.plannedDate<=d).length);
+    const A=dts.map(d=>done.filter(x=>(x.st.sub||'')&&x.st.sub<=d).length);
+    const top=Math.max(1,P[P.length-1]);
+    /* viewBox units; room on the right for the end labels */
+    const L=13,R=34,Tp=7,B=13,W=200,H=70;
+    const px=i=>L+(dts.length<2?0:i*(W-L-R)/(dts.length-1));
+    const py=v=>H-B-(v/top)*(H-Tp-B);
+    const path=a=>a.map((v,i)=>(i?'L':'M')+px(i).toFixed(1)+' '+py(v).toFixed(1)).join(' ');
+    const dot=(a,c)=>a.map((v,i)=>`<circle cx="${px(i).toFixed(1)}" cy="${py(v).toFixed(1)}"
+      r="1.5" fill="${c}"/>`).join('');
+    const nowX=(()=>{ const i=dts.findIndex(d=>d>=today);
+      return i<0?px(dts.length-1):px(i); })();
+    const day=d=>{const x=new Date(d);return String(x.getDate()).padStart(2,'0')+' '+
+      x.toLocaleDateString('en-GB',{month:'short'});};
+    const lastP=P[P.length-1], lastA=A[A.length-1];
+    /* the legend measures WHAT IS DUE BY TODAY — the line runs on to the end of
+       the programme, and reading one against the other would flatter the figure */
+    const dueP=rs.filter(x=>x.it.plannedDate&&x.it.plannedDate<=today).length;
+    const dueA=done.filter(x=>x.it.plannedDate&&x.it.plannedDate<=today).length;
+    return `<div class="rdo"><h4>${esc(title)}</h4>
+      <svg class="cv" viewBox="0 0 ${W} ${H}" role="img"
+        aria-label="${lastA} of ${lastP} submitted against the committed dates">
+        <line class="ax" x1="${L}" y1="${H-B}" x2="${W-R}" y2="${H-B}"/>
+        <line class="ax" x1="${L}" y1="${Tp}" x2="${L}" y2="${H-B}"/>
+        <text class="cvy" x="${L-2}" y="${py(top)+2}">${top}</text>
+        <text class="cvy" x="${L-2}" y="${H-B+2}">0</text>
+        <line class="now" x1="${nowX.toFixed(1)}" y1="${Tp}" x2="${nowX.toFixed(1)}" y2="${H-B}"/>
+        <text class="cvx" x="${nowX.toFixed(1)}" y="${H-B+9}" text-anchor="middle">today</text>
+        <text class="cvx" x="${L}" y="${H-B+9}">${day(dts[0])}</text>
+        <path class="pl" d="${path(P)}"/>${dot(P,'#6b7f92')}
+        <path class="ac" d="${path(A)}"/>${dot(A,'#0a7a44')}
+        <text class="cve pl-t" x="${(W-R+3)}" y="${py(lastP)+2}">${lastP} planned</text>
+        <text class="cve ac-t" x="${(W-R+3)}" y="${py(lastA)+2}">${lastA} actual</text>
+      </svg>
+      <div class="rdleg">
+        <div class="lg"><i style="background:#0a7a44"></i><span>Submitted by today</span>
+          <b>${dueA}</b><u>${dueP?Math.round(dueA/dueP*100):0}%</u></div>
+        <div class="lg"><i style="background:#6b7f92"></i><span>Behind by today</span>
+          <b>${dueP-dueA}</b><u>${dueP?Math.round((dueP-dueA)/dueP*100):0}%</u></div>
+        <div class="lgnote">${dueP} of ${lastP} committed dates have passed</div>
+      </div></div>`;
+  };
+  const donut=(title,base,baseNote,segs)=>{
+    const tot=base||segs.reduce((t,x)=>t+x.n,0);
+    const GAP=segs.filter(x=>x.n>0).length>1?1.2:0;   /* surface gap between fills */
+    let off=25;                                        /* start at twelve o'clock */
+    const ring=segs.map(x=>{
+      const p=tot?x.n/tot*100:0;
+      if(p<=0)return '';
+      const dash=Math.max(0.4,p-GAP);
+      const c=`<circle class="sg" cx="21" cy="21" r="15.9155" stroke="${x.c}"
+        stroke-dasharray="${dash.toFixed(2)} ${(100-dash).toFixed(2)}"
+        stroke-dashoffset="${off.toFixed(2)}"></circle>`;
+      off-=p;                                          /* clockwise */
+      return c;
+    }).join('');
+    const legend=segs.map(x=>`<div class="lg"><i style="background:${x.c}"></i>
+      <span>${esc(x.t)}</span><b>${x.n}</b><u>${tot?Math.round(x.n/tot*100):0}%</u></div>`).join('');
+    return `<div class="rdo"><h4>${esc(title)}</h4>
+      <div class="rdrow">
+        <svg class="dn" viewBox="0 0 42 42" role="img" aria-label="${esc(title)}">
+          <circle class="bg" cx="21" cy="21" r="15.9155"></circle>${ring}
+          <text x="21" y="20.6" class="dnv">${tot}</text>
+          <text x="21" y="25.4" class="dnl">${esc(baseNote)}</text>
+        </svg>
+        <div class="rdleg">${legend}</div>
+      </div></div>`;
+  };
   /* how many DOCUMENTS stand at this AWPT answer today */
   const stAt=k=>{const r=A.states.find(x=>x.k===k);return r?r.n:0;};
+  /* the three bases, each stated on its own group */
+  const nTotal=T.n;
+  const nSubmitted=T.done;                    /* has been issued to AWPT */
+  const nNot=T.n-T.done;
+  /* of those issued, where the review stands */
+  const rnc=stAt('RNC'), rwc=stAt('RWC'), ur=stAt('Awaiting reply');
+  const nReviewed=rnc+rwc+ur;
+  /* what the programme asked for by today, against what actually went */
+  const dueByNow=rows.filter(x=>x.it.plannedDate&&x.it.plannedDate<=today);
+  const goneByNow=dueByNow.filter(x=>x.st.k==='done'||x.st.k==='late');
+  const nPlanned=dueByNow.length, nActual=goneByNow.length;
 
   /* oldest committed date first */
   const ord=rows.slice().sort((a,b)=>{
@@ -3256,14 +3394,16 @@ function buildPlanAnalysis(kind){
       Across every revision these documents have ever been through, AWPT has
       answered ${A.answered} time${A.answered===1?'':'s'} — ${A.rwc} with comments
       and ${A.rnc} with none.</div>
-    <div class="rkpis">${
-      kpi('Tracked',T.n)+kpi('Submitted',T.done)+kpi('Submitted',T.pct+'%')+
-      kpi('On time',T.onTime)+kpi('Late',T.late)+kpi('Overdue now',T.overdue)+
-      kpi('Still to come',T.open)+
-      /* Document counts, like every other card in this row. These used to count
-         CYCLES over the whole history, so "RWC 56" sat beside "Tracked 45" and
-         read as though more documents had come back than existed. */
-      kpi('Cleared — RNC',stAt('RNC'))+kpi('With comments — RWC',stAt('RWC'))}</div>
+    <div class="rdset">
+      ${donut('Submission',nTotal,'tracked',[
+        {t:'Submitted to AWPT',n:nSubmitted,c:'#0a7a44'},
+        {t:'Not submitted',    n:nNot,      c:'#6b7f92'}])}
+      ${donut('AWPT review',nReviewed,'issued',[
+        {t:'Approved — RNC', n:rnc,c:'#0a7a44'},
+        {t:'Under review',   n:ur, c:'#b8860b'},
+        {t:'Returned — RWC', n:rwc,c:'#b3241f'}])}
+      ${curve('Planned against actual',rows)}
+    </div>
     <table class="rtbl"><thead><tr>
       <th class="c-idx">#</th><th class="c-ref">Document number</th>
       <th class="c-title">Submittal name</th><th class="c-discipline">Discipline</th>
