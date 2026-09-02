@@ -1302,7 +1302,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-31 · v80';
+const BUILD='LOD 2026-08-31 · v81';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -4827,9 +4827,11 @@ function mobPlan(){
     ${canEdit()?`<div class="mcount"><span class="n"><b>${items.length}</b> document(s) planned</span>
       <button id="mpadd">Add</button>
       <button id="mpview">${PLAN_VIEW==='gantt'?'Cards':'Gantt'}</button>
+      <button id="mpanal">Analysis</button>
       <button id="mpmore" aria-label="Manage this plan">⋯</button></div>`:
       `<div class="mcount"><span class="n"><b>${items.length}</b> document(s) planned</span>
-      <button id="mpview">${PLAN_VIEW==='gantt'?'Cards':'Gantt'}</button></div>`}
+      <button id="mpview">${PLAN_VIEW==='gantt'?'Cards':'Gantt'}</button>
+      <button id="mpanal">Analysis</button></div>`}
     ${PLAN_VIEW==='gantt'&&items.length?`<div class="panel" style="overflow-x:auto">${ganttHTML(PLAN_CUR)}</div>`:''}
     ${PLAN_VIEW!=='gantt'&&items.length?`<div class="swipehint">Tap to edit · swipe left to remove</div>`+items.map(card).join('')
       :''}
@@ -4910,13 +4912,15 @@ function mobPlanManage(){
   msgBox(weekLabel(p.weekStart),'',
     `<div class="mrowlist">
        <button class="mopt" data-o="new">New week…<span>Plan a different week</span></button>
-       <button class="mopt" data-o="pdf">Export this plan as a PDF<span>Landscape A4 — set Landscape, then Save as PDF</span></button>
+       <button class="mopt" data-o="pdf">Export this week as a PDF<span>Just this week's documents</span></button>
+       <button class="mopt" data-o="analysis">Analysis report<span>Every week, with revisions and codes</span></button>
        <button class="mopt" data-o="edit">Change the week or note<span>${esc(p.name||'No note')}</span></button>
        <button class="mopt danger" data-o="del">Delete this plan<span>${n} document(s) on it — the documents stay</span></button>
      </div>`,[['Close',null,'']]);
   document.querySelectorAll('[data-o]').forEach(b=>b.onclick=()=>{
     const a=b.dataset.o; closeMsg();
     if(a==='pdf')exportPlanPDF(p.id);
+    if(a==='analysis')exportPlanAnalysisPDF(PLAN_KIND);
     if(a==='new')mobPlanNew();
     if(a==='edit')mobPlanEdit(p);
     if(a==='del')mobPlanDelete(p);});
@@ -5074,6 +5078,8 @@ function wireMob(){
   if(pv)pv.onclick=()=>{PLAN_VIEW=PLAN_VIEW==='gantt'?'table':'gantt';mobRender();};
   const pm=document.getElementById('mpmore');
   if(pm)pm.onclick=()=>mobPlanManage();
+  const an=document.getElementById('mpanal');
+  if(an)an.onclick=()=>exportPlanAnalysisPDF(PLAN_KIND);
   const lg=document.getElementById('mlogcyc');
   if(lg&&MOB.view==='one'){const r=AB.find(x=>x.id===MOB.id); if(r)lg.onclick=()=>logCycle(r);}
   if(MOB.view==='one'){const rr=AB.find(x=>x.id===MOB.id);
