@@ -1100,6 +1100,27 @@ table.rctbl td.bad{color:#d64545;font-weight:700}
 table.rctbl tr.hot td{background:rgba(214,69,69,.08)}
 table.rctbl tr.tot td{border-top:2px solid var(--ring);border-bottom:none}
 table.rctbl tr[data-go]:hover td{background:var(--chip)}
+/* --- the same tables on a phone -------------------------------------------
+   380px cannot hold five spelled-out headings and a weekday, so the figures
+   were scrolling off the right edge where nobody saw them. */
+body.mobile table.rctbl{font-size:11.5px;table-layout:fixed}
+body.mobile table.rctbl th,body.mobile table.rctbl td{padding:5px 4px}
+body.mobile table.rctbl .wd{display:none}
+/* the outstanding list has free text in it, so it stops being a grid and
+   becomes one block per document */
+body.mobile table.rctbl.stack thead{display:none}
+body.mobile table.rctbl.stack,body.mobile table.rctbl.stack tbody{display:block}
+body.mobile table.rctbl.stack tr{display:block;padding:7px 0;
+  border-bottom:1px solid var(--grid)}
+body.mobile table.rctbl.stack td{display:inline;border:none;padding:0}
+body.mobile table.rctbl.stack td:first-child{display:block;font-weight:700;
+  color:var(--ink);margin-bottom:2px}
+/* the :not() chain outranks .n, so the day count is excluded here explicitly
+   or it loses its own suffix and shows a bare number followed by a dot */
+body.mobile table.rctbl.stack td:not(:first-child):not(:last-child):not(.n):after{content:" · "}
+body.mobile table.rctbl.stack td.n:after{content:"d late"}
+/* the separator belongs to the note, so an empty note leaves no dangling dot */
+body.mobile table.rctbl.stack td.act:before{content:" · "}
 
 /* the leg switch, on the register and the dashboard */
 .legbar{display:flex;gap:8px;padding:10px 10px 0;flex:none;flex-wrap:wrap}
@@ -1354,8 +1375,12 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
   return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
-const SHORT_DISC={};
-const BUILD='LOD 2026-08-31 · v91';
+/* Was an empty map, so every place that asked for a short discipline silently
+   got the long one back. On a phone card "MECHANICAL" eats the line that has to
+   carry the revision and the age as well. */
+const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
+  'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
+const BUILD='LOD 2026-08-31 · v93';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -4223,10 +4248,10 @@ function recoveryHTML(){
     if(st[i].k==='overdue')byDate[d].overdue++; });
   const dates=Object.values(byDate).sort((a,b)=>a.d<b.d?-1:1);
   const table=`<table class="rctbl"><thead><tr>
-      <th>Committed date</th><th class="n">Documents</th><th class="n">Submitted</th>
-      <th class="n">Outstanding</th><th class="n">Done</th></tr></thead><tbody>
+      <th>Committed</th><th class="n">Docs</th><th class="n">Sent</th>
+      <th class="n">Left</th><th class="n">%</th></tr></thead><tbody>
     ${dates.map(r=>`<tr${r.d<today&&r.done<r.total?' class="hot"':''}>
-      <td><b>${esc(niceDate(r.d))}</b></td>
+      <td><b>${niceDateWD(r.d)}</b></td>
       <td class="n">${r.total}</td>
       <td class="n good">${r.done||'—'}</td>
       <td class="n ${r.total-r.done?'bad':''}">${r.total-r.done||'—'}</td>
@@ -4240,13 +4265,13 @@ function recoveryHTML(){
     .filter(x=>x.s.k==='overdue')
     .sort((a,b)=>a.it.plannedDate<b.it.plannedDate?-1:1);
   const late=lateList.length?`<h3 style="margin-top:16px">Committed but not submitted</h3>
-    <table class="rctbl"><thead><tr><th>Document</th><th>Committed</th>
+    <table class="rctbl stack"><thead><tr><th>Document</th><th>Committed</th>
       <th class="n">Days late</th><th>Agreed action</th></tr></thead><tbody>
     ${lateList.map(x=>`<tr data-go="${x.it.docId}">
       <td>${esc((x.s.doc&&x.s.doc.title)||'—')}</td>
-      <td>${esc(niceDate(x.it.plannedDate))}</td>
+      <td>${niceDateWD(x.it.plannedDate)}</td>
       <td class="n bad">${days(x.it.plannedDate,today)}</td>
-      <td>${esc(x.it.note||'')}</td></tr>`).join('')}</tbody></table>`:'';
+      <td class="${x.it.note?'act':''}">${esc(x.it.note||'')}</td></tr>`).join('')}</tbody></table>`:'';
 
   return `<div class="rchead"><div class="rcpct">${pct}%</div>
       <div class="rcsub"><b>${done} of ${items.length} submitted to AWPT</b>
@@ -4257,6 +4282,16 @@ function niceDate(d){
   if(!d)return '';
   const dt=new Date(d+'T00:00:00');
   return dt.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+}
+/* The weekday is what pushed "Wed 26 Aug" onto two lines on a phone and made
+   every row double height. It is worth having on the desktop, so it is wrapped
+   rather than dropped, and the phone hides it in CSS. */
+function niceDateWD(d){
+  if(!d)return '';
+  const dt=new Date(d+'T00:00:00');
+  const wd=dt.toLocaleDateString('en-GB',{weekday:'short'});
+  const rest=dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+  return '<span class="wd">'+esc(wd)+' </span>'+esc(rest);
 }
 
 /* ============================================================
@@ -4896,18 +4931,23 @@ function card(r,i){
   const k=onLeg?legState(r,LEG):(r.status||'Not issued');
   const late=(r.holder!=='Closed'&&r.plannedDate&&r.plannedDate<today)?days(r.plannedDate,today):0;
   const out=heldDays(r)||0;
-  const meta=[r.discipline||'—'];
-  if(r.reviewClass)meta.push('<span class="rev">'+esc(r.reviewClass)+'</span>');
-  if(r.scope==='Optional')meta.push('Optional');
+  /* WHAT A CARD IS FOR: which document, what state, how bad — nothing else.
+     The old line carried discipline, review class, scope, revision, the full
+     sent date, the running day count AND a held badge, and the last two were
+     usually the same number said twice ("2d* · 2D HELD"). The class, the scope
+     and the sent date are all on the document itself, one tap away. */
+  const meta=[];
   if(onLeg){
-    /* the same three things the desktop leg register shows: which revision,
-       when it went and how long that cycle took */
     const lg=LEG==='hesco'?'HESCO':'Maaden';
     const rev=legRev(r,lg), sent=legSent(r,lg), back=legReplied(r,lg);
     if(rev)meta.push('<span class="rev">'+esc(rev)+'</span>');
-    if(sent)meta.push('sent '+esc(sent));
-    if(sent&&back)meta.push(days(sent,back)+'d');
-    else if(sent)meta.push(days(sent,today)+'d*');
+    meta.push(esc(SHORT_DISC[r.discipline]||r.discipline||'—'));
+    /* one age, in words that say whose desk it is on */
+    if(sent&&back)meta.push(days(sent,back)?days(sent,back)+'d turnaround':'same day');
+    else if(out)meta.push(out+'d with '+esc(r.holder||(LEG==='hesco'?'AWPT':'Maaden')));
+  }else{
+    meta.push(esc(SHORT_DISC[r.discipline]||r.discipline||'—'));
+    if(out)meta.push(out+'d with '+esc(r.holder||'—'));
   }
   return `<article class="dcard" data-mo="${r.id}"
       style="animation-delay:${Math.min(i||0,12)*26}ms;--edge:${
@@ -4923,8 +4963,7 @@ function card(r,i){
           style="background:${col}22;color:${col};border-color:${col}55">${esc(g+inf)}</span>`;})()}</div>
     <h3 class="dc-t">${esc(r.title)}</h3>
     <div class="dc-m">${meta.join('<i class="sep"></i>')}
-      ${out?`<span class="out">${out}d held</span>`
-        :late?`<span class="late">${late}d overdue</span>`:''}</div></article>`;
+      ${late?`<span class="late">${late}d overdue</span>`:''}</div></article>`;
 }
 function mobList(){
   const rows=mobRows();
