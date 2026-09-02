@@ -745,6 +745,34 @@ body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent)
   padding:9px 0;border-bottom:1px solid var(--ring)}
 .msg .tlrow:last-child{border-bottom:none}
 .msg .acts{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+/* THE DIALOG ON A PHONE.
+   The colours were already the phone's — every value here is a variable and
+   body.mobile re-points them — but the component was still the desktop one: a
+   460px card floating in the middle of the screen, with 14px desktop type and
+   a hairline border, over a shell built from full-width sheets with 18px radii
+   and a 23px title. It read as another app. Same dialog, phone presentation. */
+body.mobile #msgwrap{align-items:flex-end;padding:0;background:rgba(0,0,0,.5)}
+body.mobile .msg{max-width:none;width:100%;border:0;
+  border-radius:22px 22px 0 0;background:var(--m-card);
+  padding:8px 18px calc(18px + env(safe-area-inset-bottom));
+  box-shadow:0 -18px 46px rgba(0,0,0,.5);
+  max-height:88vh;display:flex;flex-direction:column}
+/* the grab handle every sheet on a phone has */
+body.mobile .msg::before{content:"";display:block;flex:none;width:38px;height:4px;
+  border-radius:3px;background:var(--m-edge);margin:2px auto 12px}
+body.mobile .msg h4{font-size:19px;font-weight:750;letter-spacing:-.02em;
+  color:var(--m-ink);margin-bottom:12px}
+body.mobile .msg .body{font-size:13.5px;color:var(--m-ink2);flex:1;min-height:0;
+  max-height:none;overflow:auto;-webkit-overflow-scrolling:touch}
+body.mobile .msg .acts{margin-top:16px;flex:none;gap:10px}
+body.mobile .msg .acts .btn{flex:1;min-height:46px;border-radius:14px;font-size:14px;
+  justify-content:center}
+body.mobile .msg .tlrow{padding:11px 0;border-color:var(--m-line)}
+/* the rows inside it get the same breathing room as the phone's own lists */
+body.mobile .msg .nrow{padding:13px 2px;border-color:var(--m-line)}
+body.mobile .msg .nrow b{font-size:14px;color:var(--m-ink)}
+body.mobile .msg .nrow .nb{font-size:13px}
+body.mobile .msg .nrow.unread{border-left:3px solid var(--m-accent);padding-left:11px}
 #toast{position:fixed;bottom:38px;left:50%;transform:translateX(-50%) translateY(16px);
   background:var(--ink);color:var(--page1);padding:8px 15px;border-radius:10px;font-size:12.5px;
   opacity:0;pointer-events:none;transition:.22s;z-index:2000}
@@ -990,64 +1018,75 @@ body.mobile .panel h3{font-size:9.5px;font-weight:700;letter-spacing:.11em;text-
 
 
 /* ============================================================
-   Midnight violet — the shared look across the three trackers.
+   Charcoal and emerald. Sampled from the reference: a near-black
+   ground at #17181a, every surface one step up at #202123, and a
+   single green doing all the work of an accent. Separation is by
+   TONE — the surfaces are lighter than the ground, so borders are
+   nearly invisible rather than drawn.
    Only the dark theme is restyled; the light one is untouched.
    ============================================================ */
 :root[data-theme="dark"]{
   color-scheme:dark;
-  --page1:#150e26; --page2:#0a0613;
-  --glass:rgba(23,16,40,.92);
-  --surface:#171029; --surface2:#1f1636; --field:#120c21;
-  --ink:#f5f2ff; --ink2:#bdb2d8; --ink3:#8b81a8; --muted:#8b81a8;
-  --card:#1b1330; --chip:#251a42; --line:#332552;
-  --grid:#2b1f47; --ring:rgba(168,85,247,.20);
-  --accent:#a855f7; --accent-soft:rgba(168,85,247,.14); --accent-soft2:rgba(168,85,247,.24);
-  --good:#34d399; --warn:#fbbf24; --serious:#fb923c; --critical:#f43f5e;
+  --page1:#17181a; --page2:#141517;
+  --glass:rgba(32,33,35,.94);
+  --surface:#202123; --surface2:#262729; --field:#1a1b1d;
+  /* the reference uses #626365 for its small labels; at 2.7:1 that is below
+     what a 10px uppercase label can carry, so the greys here are lifted to
+     clear 4.5:1 on the card. The look survives it; unreadable labels would not. */
+  --ink:#ffffff; --ink2:#a9aaac; --ink3:#8a8b8d; --muted:#8a8b8d;
+  --card:#202123; --chip:#2a2b2d; --line:#2e2f31;
+  --grid:#2a2b2d; --ring:rgba(255,255,255,.07);
+  --accent:#02b075; --accent-soft:rgba(2,176,117,.13); --accent-soft2:rgba(2,176,117,.24);
+  /* the semantic four stay their own hues: the accent is chrome, and a status
+     must never be readable as "the brand colour" */
+  --good:#34d399; --warn:#fbbf24; --serious:#fb923c; --critical:#ff4738;
   --goodtext:#34d399;
-  --sel:rgba(168,85,247,.22); --selb:#a855f7;
-  --c-dim:#8b81a8;
-  --shadow:0 14px 40px rgba(10,4,26,.66),0 2px 10px rgba(10,4,26,.5);
-  --shadow-focus:0 24px 70px rgba(88,28,135,.55),0 3px 12px rgba(10,4,26,.6);
+  --sel:rgba(2,176,117,.20); --selb:#02b075;
+  --c-dim:#8a8b8d;
+  --shadow:0 14px 40px rgba(0,0,0,.55),0 2px 10px rgba(0,0,0,.45);
+  --shadow-focus:0 24px 70px rgba(0,0,0,.65),0 3px 12px rgba(0,0,0,.5);
 }
 
-/* the page itself: a deep violet wash rather than flat grey */
+/* the page itself: flat charcoal, with the faintest lift under the top edge
+   so the shell reads as a surface rather than a hole */
 :root[data-theme="dark"] body{
   background:
-    radial-gradient(1100px 620px at 12% -10%, rgba(124,58,237,.22), transparent 60%),
-    radial-gradient(900px 520px at 88% 0%,  rgba(168,85,247,.16), transparent 62%),
-    linear-gradient(180deg,var(--page1),var(--page2) 60%);
+    radial-gradient(1200px 560px at 50% -18%, rgba(255,255,255,.028), transparent 70%),
+    linear-gradient(180deg,var(--page1),var(--page2) 70%);
   background-attachment:fixed;
 }
 
-/* windows and panels get a violet hairline and a little depth */
+/* windows and panels: a flat surface one step above the ground, no gradient,
+   the hairline barely there. Depth comes from the shadow, not from a border. */
 :root[data-theme="dark"] .win{
-  border:1px solid rgba(168,85,247,.18);
-  background:linear-gradient(180deg,rgba(31,22,54,.96),rgba(20,14,38,.97));
-  backdrop-filter:blur(10px);
+  border:1px solid #2e2f31;
+  background:#202123;
+  backdrop-filter:none;
 }
 :root[data-theme="dark"] .win .wtitle,
 :root[data-theme="dark"] .win .whead{
-  background:linear-gradient(180deg,rgba(45,32,78,.9),rgba(31,22,54,.6));
-  border-bottom:1px solid rgba(168,85,247,.14)}
+  background:#242527;
+  border-bottom:1px solid #2e2f31}
 :root[data-theme="dark"] body:not(.mobile) .panel{
-  background:linear-gradient(180deg,rgba(34,24,60,.55),rgba(24,17,44,.55));
-  border:1px solid rgba(168,85,247,.14);border-radius:14px}
-:root[data-theme="dark"] body:not(.mobile) .panel h3{color:#c4b5fd;letter-spacing:.09em}
+  background:#202123;
+  border:1px solid #2a2b2d;border-radius:14px}
+:root[data-theme="dark"] body:not(.mobile) .panel h3{color:#8a8b8d;letter-spacing:.09em}
 
-/* the headline tiles, as glowing cards */
+/* the headline tiles */
 :root[data-theme="dark"] body:not(.mobile) .kpi{
-  background:linear-gradient(180deg,rgba(38,27,68,.75),rgba(24,17,44,.75));
-  border:1px solid rgba(168,85,247,.16);border-radius:14px;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
-:root[data-theme="dark"] body:not(.mobile) .kpi .k{color:#a99cc9;letter-spacing:.1em}
-:root[data-theme="dark"] body:not(.mobile) .kpi .v{color:#f5f2ff;text-shadow:0 0 22px rgba(168,85,247,.35)}
+  background:#202123;
+  border:1px solid #2a2b2d;border-radius:14px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
+:root[data-theme="dark"] body:not(.mobile) .kpi .k{color:#8a8b8d;letter-spacing:.1em}
+/* no glow on the number: a figure that shines reads as a good figure */
+:root[data-theme="dark"] body:not(.mobile) .kpi .v{color:#ffffff}
 
 /* the top bar */
 :root[data-theme="dark"] .topbar{
-  background:linear-gradient(180deg,rgba(30,21,54,.96),rgba(18,12,34,.92));
-  border-bottom:1px solid rgba(168,85,247,.16)}
+  background:#1a1b1d;
+  border-bottom:1px solid #2a2b2d}
 :root[data-theme="dark"] .tbbtn{color:var(--ink2)}
-:root[data-theme="dark"] .tbbtn:hover{background:var(--chip);color:#e9d5ff}
+:root[data-theme="dark"] .tbbtn:hover{background:var(--chip);color:#fff}
 
 /* controls */
 :root[data-theme="dark"] body:not(.mobile) .btn,
@@ -1055,16 +1094,16 @@ body.mobile .panel h3{font-size:9.5px;font-weight:700;letter-spacing:.11em;text-
 :root[data-theme="dark"] body:not(.mobile) input,
 :root[data-theme="dark"] body:not(.mobile) select,
 :root[data-theme="dark"] body:not(.mobile) textarea{
-  background:rgba(18,12,33,.85);border-color:#3a2a5e;color:var(--ink)}
-:root[data-theme="dark"] body:not(.mobile) .btn:hover{border-color:var(--accent);color:#e9d5ff}
+  background:#1a1b1d;border-color:#333436;color:var(--ink)}
+:root[data-theme="dark"] body:not(.mobile) .btn:hover{border-color:var(--accent);color:#fff}
 :root[data-theme="dark"] body:not(.mobile) .btn.primary,
 :root[data-theme="dark"] body:not(.mobile) button.primary{
-  background:linear-gradient(180deg,#a855f7,#7c3aed);border-color:#8b5cf6;color:#fff;
-  box-shadow:0 6px 18px rgba(124,58,237,.45)}
+  background:#02b075;border-color:#02b075;color:#062318;font-weight:650;
+  box-shadow:0 6px 20px rgba(2,176,117,.32)}
 :root[data-theme="dark"] body:not(.mobile) .f:focus,
 :root[data-theme="dark"] body:not(.mobile) input:focus,
 :root[data-theme="dark"] body:not(.mobile) select:focus{
-  outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(168,85,247,.22)}
+  outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(2,176,117,.22)}
 /* fields on the phone, in the phone's colours — the violet field above was
    showing through on every dropdown and text box */
 body.mobile .f,body.mobile input,body.mobile select,body.mobile textarea{
@@ -1079,17 +1118,17 @@ body.mobile .btn:hover,body.mobile .btn:active{border-color:var(--m-accent);colo
 body.mobile .btn.primary{background:var(--m-accent);border-color:var(--m-accent);color:#0d2018}
 body.mobile .btn.on{background:var(--m-accent-soft);border-color:var(--m-accent);color:var(--m-ink)}
 
-/* the register */
+/* the register: banding is a two-step tonal difference, not a colour */
 :root[data-theme="dark"] table.g thead th{
-  background:linear-gradient(180deg,#2a1d4d,#221739);color:#c4b5fd;
-  border-bottom:1px solid rgba(168,85,247,.22)}
-:root[data-theme="dark"] table.g tbody td{background:#171029}
-:root[data-theme="dark"] table.g tbody tr:nth-child(even) td{background:#1c1434}
-:root[data-theme="dark"] table.g tbody tr:hover td{background:#251a42}
-:root[data-theme="dark"] table.g tbody th{background:#1f1636;color:#8b81a8}
-:root[data-theme="dark"] table.g tbody td.stick1{background:#171029}
-:root[data-theme="dark"] table.g tbody tr:nth-child(even) td.stick1{background:#1c1434}
-:root[data-theme="dark"] table.g tbody tr:hover td.stick1{background:#251a42}
+  background:#26272a;color:#a9aaac;
+  border-bottom:1px solid #343537}
+:root[data-theme="dark"] table.g tbody td{background:#1b1c1e}
+:root[data-theme="dark"] table.g tbody tr:nth-child(even) td{background:#1f2022}
+:root[data-theme="dark"] table.g tbody tr:hover td{background:#282a2c}
+:root[data-theme="dark"] table.g tbody th{background:#222325;color:#8a8b8d}
+:root[data-theme="dark"] table.g tbody td.stick1{background:#1b1c1e}
+:root[data-theme="dark"] table.g tbody tr:nth-child(even) td.stick1{background:#1f2022}
+:root[data-theme="dark"] table.g tbody tr:hover td.stick1{background:#282a2c}
 
 /* chips, cards and tags — DESKTOP ONLY.
    These four selectors hit .dcard and the chip rows, which the phone also uses,
@@ -1097,18 +1136,18 @@ body.mobile .btn.on{background:var(--m-accent-soft);border-color:var(--m-accent)
    palette: navy header, violet cards. Scoped to :not(.mobile) so the phone keeps
    the skin defined for it and the desktop keeps this one. */
 :root[data-theme="dark"] body:not(.mobile) .dcard{
-  background:linear-gradient(180deg,rgba(35,25,62,.9),rgba(23,16,41,.9));
-  border:1px solid rgba(168,85,247,.16)}
+  background:#202123;
+  border:1px solid #2a2b2d}
 :root[data-theme="dark"] body:not(.mobile) .mfilt button,
 :root[data-theme="dark"] body:not(.mobile) .dayfilt button,
 :root[data-theme="dark"] body:not(.mobile) .dpre button,
 :root[data-theme="dark"] body:not(.mobile) .mdate button{
-  background:rgba(30,21,54,.8);border-color:#3a2a5e;color:var(--ink2)}
+  background:#26272a;border-color:#333436;color:var(--ink2)}
 :root[data-theme="dark"] body:not(.mobile) .mfilt button.on,
 :root[data-theme="dark"] body:not(.mobile) .dayfilt button.on,
 :root[data-theme="dark"] body:not(.mobile) .dpre button.on,
 :root[data-theme="dark"] body:not(.mobile) .mdate button.on{
-  background:linear-gradient(180deg,#a855f7,#7c3aed);border-color:#8b5cf6;color:#fff}
+  background:var(--accent-soft);border-color:var(--accent);color:#fff}
 /* the phone's own chip row: outlined when chosen, never filled */
 body.mobile .dayfilt button,body.mobile .dpre button,body.mobile .mdate button{
   background:var(--m-card);border:1px solid var(--m-line);color:var(--m-ink2);
@@ -1119,16 +1158,16 @@ body.mobile .dayfilt button.on,body.mobile .dpre button.on,body.mobile .mdate bu
 /* the sign-in card */
 :root[data-theme="dark"] #login .card,
 :root[data-theme="dark"] #login .box{
-  background:linear-gradient(180deg,rgba(35,25,62,.96),rgba(20,14,38,.98));
-  border:1px solid rgba(168,85,247,.22);
-  box-shadow:0 30px 90px rgba(88,28,135,.5)}
+  background:#202123;
+  border:1px solid #2e2f31;
+  box-shadow:0 30px 90px rgba(0,0,0,.6)}
 
 /* scrollbars */
 :root[data-theme="dark"] ::-webkit-scrollbar{width:11px;height:11px}
-:root[data-theme="dark"] ::-webkit-scrollbar-track{background:#120c21}
+:root[data-theme="dark"] ::-webkit-scrollbar-track{background:#17181a}
 :root[data-theme="dark"] ::-webkit-scrollbar-thumb{
-  background:#3f2d67;border-radius:8px;border:2px solid #120c21}
-:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover{background:#5b3fa0}
+  background:#3a3b3d;border-radius:8px;border:2px solid #17181a}
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover{background:#4d4e50}
 /* the phone's scrollbar, in the phone's colours. The violet thumb above is a
    descendant-free selector, so it painted every scrolling element in the app —
    including the phone body, where it was the last purple thing left on screen. */
@@ -1153,11 +1192,11 @@ table.g.wrapped td .cellin{white-space:pre-wrap}
 .gwrap{overflow:auto;height:100%;scrollbar-width:auto}
 .gwrap::-webkit-scrollbar{width:13px;height:13px}
 .gwrap::-webkit-scrollbar-track{background:var(--surface2)}
-.gwrap::-webkit-scrollbar-thumb{background:var(--line2,#3f2d67);border-radius:8px;
+.gwrap::-webkit-scrollbar-thumb{background:var(--line2,#3a3b3d);border-radius:8px;
   border:3px solid var(--surface2)}
 .gwrap::-webkit-scrollbar-thumb:hover{background:var(--accent)}
 .gwrap::-webkit-scrollbar-corner{background:var(--surface2)}
-.btn.on{background:linear-gradient(180deg,var(--accent),#7c3aed);border-color:transparent;color:#fff}
+.btn.on{background:var(--accent);border-color:transparent;color:#062318;font-weight:650}
 
 /* The register window: the toolbar is fixed and the grid scrolls inside it,
    so the horizontal scrollbar sits at the bottom of the window where it can
@@ -1179,7 +1218,7 @@ body.mobile .rcpct{color:var(--m-ink)}
 .rcbar{display:flex;height:12px;border-radius:7px;overflow:hidden;background:var(--chip);margin-bottom:8px}
 .rcbar i{display:block}
 .rcbar i.ontime{background:#0f9d58} .rcbar i.late{background:#f0b429}
-.rcbar i.overdue{background:#d64545} .rcbar i.due{background:#3f2d67}
+.rcbar i.overdue{background:#d64545} .rcbar i.due{background:#5c6b7a}
 .rclegend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ink2);margin-bottom:14px}
 .rclegend span{display:inline-flex;align-items:center;gap:6px}
 /* a dropped commitment is stated, not hidden: a base that shrinks in silence
@@ -1187,7 +1226,7 @@ body.mobile .rcpct{color:var(--m-ink)}
 .rclegend span.rcgone{color:var(--ink3);font-style:italic}
 .rclegend i{width:11px;height:9px;border-radius:3px;display:inline-block}
 .rclegend i.ontime{background:#0f9d58} .rclegend i.late{background:#f0b429}
-.rclegend i.overdue{background:#d64545} .rclegend i.due{background:#3f2d67}
+.rclegend i.overdue{background:#d64545} .rclegend i.due{background:#5c6b7a}
 table.rctbl{width:100%;border-collapse:collapse;font-size:12.5px}
 table.rctbl th{text-align:left;padding:6px 8px;border-bottom:1px solid var(--ring);
   font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
@@ -1224,7 +1263,7 @@ body.mobile table.rctbl.stack td.act:before{content:" · "}
 .legbar{display:flex;gap:8px;padding:10px 10px 0;flex:none;flex-wrap:wrap}
 .legtab{flex:1;min-width:150px;text-align:left;border:1px solid var(--ring);border-radius:11px;
   background:var(--surface2);padding:8px 12px;cursor:pointer;transition:.18s;font:inherit;color:var(--ink2)}
-.legtab:hover{border-color:var(--line2,#3f2d67)}
+.legtab:hover{border-color:var(--line2,#3a3b3d)}
 .legtab b{display:block;font-size:13px;color:var(--ink)}
 .legtab span{font-size:11px;color:var(--muted)}
 .legkpi{cursor:pointer}
@@ -1240,8 +1279,8 @@ body.mobile table.rctbl.stack td.act:before{content:" · "}
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .tcell .ts{font-size:11.5px;color:var(--muted)}
 .legtab.on{border-color:var(--accent);background:linear-gradient(180deg,var(--accent-soft),transparent);
-  box-shadow:0 0 0 3px rgba(168,85,247,.14)}
-.legtab.on b{color:#e9d5ff}
+  box-shadow:0 0 0 3px var(--accent-soft)}
+.legtab.on b{color:var(--ink)}
 /* the phone's own leg tabs: white label, accent outline, nothing lavender */
 body.mobile .legtab b{color:var(--m-ink)}
 body.mobile .legtab.on b{color:var(--m-ink)}
@@ -1483,7 +1522,7 @@ const today=isoDay(new Date());
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-08-31 · v100';
+const BUILD='LOD 2026-08-31 · v102';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
