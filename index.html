@@ -1302,7 +1302,7 @@ const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
          String(x.getDate()).padStart(2,'0');};
 const today=isoDay(new Date());
 const SHORT_DISC={};
-const BUILD='LOD 2026-08-31 · v79';
+const BUILD='LOD 2026-08-31 · v80';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2564,15 +2564,34 @@ function itemState(it,plan){
     return {k:'nodate',label:'No target date',cls:'st-none'};
   }
 
-  // A submission plan is about GETTING IT OUT THE DOOR, so it is finished the
-  // moment HESCO issues the document to AWPT — not when Maaden later sees it,
-  // and not when anyone approves it.
+  /* A submission plan is about GETTING IT OUT THE DOOR, so it is finished the
+     moment HESCO issues the document to AWPT — not when Maaden later sees it,
+     and not when anyone approves it.
+
+     Asking only "has the submission date moved since the plan was written" is
+     not enough. Some of these documents had already been issued days before the
+     plan was drafted — the plan listed them because the register said otherwise
+     — so nothing moved afterwards and they read as overdue while sitting on
+     AWPT's desk. Two things each mean the commitment is met:
+       · a submission made AFTER the commitment was written — a direct answer
+         to it, even if AWPT has since sent it back; or
+       · the obligation is already discharged — the latest revision is with AWPT
+         awaiting a reply, or AWPT cleared it.
+     A revision that came back RWC is neither: the ball is with HESCO and the
+     committed revision is still owed. */
   const sub=(r.awptSubmitted||'').trim(), base=(it.baseAwptSub||'').trim();
-  const done=!!sub&&sub!==base;
+  const answered=!!sub&&sub!==base;
+  const last=lastCycle(r,'HESCO');
+  const discharged=!!last&&(last.submitted||'')!==''&&
+    (!(last.responded||'') || last.status==='RNC' || APPROVED.includes(last.status||''));
+  const done=answered||discharged;
   if(done){
-    const late=it.plannedDate&&sub>it.plannedDate;
-    return {k:late?'late':'done',label:(late?'Submitted late':'Submitted')+' '+sub,
-            cls:late?'st-late':'st-done',sub,days:it.plannedDate?days(it.plannedDate,sub):null};
+    /* judge the date it actually went out, whichever of the two applies */
+    const on=sub||(last?last.submitted:'')||'';
+    const late=it.plannedDate&&on&&on>it.plannedDate;
+    return {k:late?'late':'done',label:(late?'Submitted late':'Submitted')+' '+on,
+            cls:late?'st-late':'st-done',sub:on,
+            days:(it.plannedDate&&on)?days(it.plannedDate,on):null};
   }
   if(it.plannedDate&&it.plannedDate<today)
     return {k:'overdue',label:days(it.plannedDate,today)+'d overdue',cls:'st-over'};
