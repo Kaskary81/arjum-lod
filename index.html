@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v104        2026-09-02
+     BUILD: v107        2026-09-02
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -1533,7 +1533,7 @@ const today=isoDay(new Date());
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-08-31 · v104';
+const BUILD='LOD 2026-08-31 · v107';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -3537,9 +3537,16 @@ function buildPlanAnalysis(kind){
       <div class="rdempty">No committed dates yet.</div></div>`;
     set.add(today);                       /* today is always a point on the line */
     const dts=[...set].sort();
-    const done=rs.filter(x=>x.st.k==='done'||x.st.k==='late');
+    /* THE SIMPLE QUESTION, AND ONLY THAT: how many did HESCO undertake to submit
+       by each date, and how many have actually been submitted. Both lines count
+       whole documents on the plan, so the two ends are 44 and 32 and the gap
+       between them is the 12 that have never been sent — the same 12 the first
+       donut shows. The stricter "does this submission answer THIS commitment"
+       test is a different question and stays where it is labelled: the Days late
+       column and the progress bands in the table. */
+    const sentOn=x=>((x.doc&&x.doc.awptSubmitted)||'').trim();
     const P=dts.map(d=>rs.filter(x=>x.it.plannedDate&&x.it.plannedDate<=d).length);
-    const A=dts.map(d=>done.filter(x=>(x.st.sub||'')&&x.st.sub<=d).length);
+    const A=dts.map(d=>rs.filter(x=>sentOn(x)&&sentOn(x)<=d).length);
     const top=Math.max(1,P[P.length-1]);
     /* viewBox units; room on the right for the end labels */
     const L=13,R=26,Tp=9,B=13,W=200,H=70;
@@ -3563,15 +3570,18 @@ function buildPlanAnalysis(kind){
     const day=d=>{const x=new Date(d);return String(x.getDate()).padStart(2,'0')+' '+
       x.toLocaleDateString('en-GB',{month:'short'});};
     const lastP=P[P.length-1];
-    /* the legend measures WHAT IS DUE BY TODAY — the line runs on to the end of
-       the programme, and reading one against the other would flatter the figure */
-    const dueP=rs.filter(x=>x.it.plannedDate&&x.it.plannedDate<=today).length;
-    const dueA=done.filter(x=>x.it.plannedDate&&x.it.plannedDate<=today).length;
+    /* the two figures the panel is FOR: what the plan asked for in total, and
+       how many of those documents have actually gone to AWPT */
+    const dueP=lastP;
+    const dueA=rs.filter(x=>sentOn(x)).length;
+    /* how many of the shortfall answer this plan's committed date rather than
+       merely existing — the one sentence that ties this panel to the table */
+    const answering=rs.filter(x=>x.st.k==='done'||x.st.k==='late').length;
     /* what the red bar spans: the two lines as they stand at today */
     const gap=Math.max(0,P[iNow]-A[iNow]);
     return `<div class="rdo"><h4>${esc(title)}</h4>
       <svg class="cv" viewBox="0 0 ${W} ${H}" role="img"
-        aria-label="${A[iNow]} submitted of the ${P[iNow]} due by today, ${lastP} committed in all">
+        aria-label="${dueA} of the ${lastP} documents on the plan have been submitted to AWPT">
         <line class="ax" x1="${L}" y1="${H-B}" x2="${W-R}" y2="${H-B}"/>
         <line class="ax" x1="${L}" y1="${Tp}" x2="${L}" y2="${H-B}"/>
         <text class="cvy" x="${L-2}" y="${py(top)+2}">${top}</text>
@@ -3594,16 +3604,15 @@ function buildPlanAnalysis(kind){
         <circle class="nowdot" cx="${nowX.toFixed(1)}" cy="${py(A[iNow]).toFixed(1)}" r="2.4"/>
         <text class="cve pl-t" x="${(W-R+3)}" y="${py(lastP)+2}">${lastP} planned</text>
         <text class="cve ac-t" x="${(nowX-3).toFixed(1)}" y="${(py(A[iNow])+8).toFixed(1)}"
-          text-anchor="end">${A[iNow]} actual</text>
+          text-anchor="end">${A[iNow]} submitted</text>
       </svg>
       <div class="rdleg">
-        <div class="lg"><i style="background:#6b7f92"></i><span>Due by today</span>
+        <div class="lg"><i style="background:#6b7f92"></i><span>Planned to submit</span>
           <b>${dueP}</b><u>100%</u></div>
-        <div class="lg"><i style="background:#0a7a44"></i><span>Submitted by today</span>
+        <div class="lg"><i style="background:#0a7a44"></i><span>Submitted</span>
           <b>${dueA}</b><u>${dueP?Math.round(dueA/dueP*100):0}%</u></div>
-        <div class="lg"><i style="background:#b3241f"></i><span>Behind by today</span>
+        <div class="lg"><i style="background:#b3241f"></i><span>Not submitted</span>
           <b>${dueP-dueA}</b><u>${dueP?Math.round((dueP-dueA)/dueP*100):0}%</u></div>
-        <div class="lgnote">${dueP} of ${lastP} committed dates have passed</div>
       </div></div>`;
   };
   const donut=(title,base,baseNote,segs,foot)=>{
@@ -3710,15 +3719,7 @@ function buildPlanAnalysis(kind){
       lastK=st.k;
       const g=GRP.find(y=>y[0]===st.k);
       const cnt=ord.filter(y=>y.st.k===st.k).length;
-      const mine=ord.filter(y=>y.st.k===st.k);
-      const none=mine.filter(nosub).length, earlier=cnt-none;
-      /* only the two owing groups need the split; elsewhere it says nothing */
-      const split=(st.k==='overdue'||st.k==='due')&&earlier
-        ? ` — ${none} never submitted at all, ${earlier} ${earlier===1?'has':'have'} an
-            earlier revision on record that AWPT returned`
-        : '';
-      head=`<tr class="grp"><td colspan="10"><b>${esc(g?g[1]:(SHORT[st.k]||st.k))}</b>${
-        split?`<i>${split}</i>`:''}
+      head=`<tr class="grp"><td colspan="10"><b>${esc(g?g[1]:(SHORT[st.k]||st.k))}</b>
         <span>${cnt} of ${T.n} · ${T.n?Math.round(cnt/T.n*100):0}%</span></td></tr>`;
     }
     const rowHead=head;
@@ -3743,23 +3744,10 @@ function buildPlanAnalysis(kind){
         <div class="rs">Delayed design deliverables · Sub-Contract 111051/2026/0022</div></div>
       <div class="rd">${stamp}<br><span>${T.n} deliverable${T.n===1?'':'s'}</span></div>
     </div>
-    <div class="rfilt"><b>Scope:</b> every ${kind==='review'?'review':'submission'} week on
-      record${weeks.length?', '+esc(weekLabel(weeks[0].weekStart))+' to '+
-      esc(weekLabel(weeks[weeks.length-1].weekStart)):''}, grouped by progress with
-      what is outstanding first, and the oldest committed date first within each group.
-      Across every revision these documents have ever been through, AWPT has
-      answered ${A.answered} time${A.answered===1?'':'s'} — ${A.rwc} with comments
-      and ${A.rnc} with none.${A.inferred?` Of those, ${A.inferred} verdict${
-      A.inferred===1?' was':'s were'} not recorded by AWPT but worked out from
-      whether HESCO resubmitted; they are marked ~ in the table and should be
-      confirmed before this is relied on.`:''}</div>
     <div class="rdset">
-      ${donut('Submitted to AWPT',nTotal,'on the plan',[
-        {t:'Submitted',     n:nSent,c:'#0a7a44'},
-        {t:'Not submitted', n:nNot, c:'#6b7f92'}],
-        'Any submission on record, whenever it was made. '+nKept+' of these '+
-        'answer the date committed in this plan — that is the figure the table '+
-        'below, the Days late column and the curve count.')}
+      ${donut('Any submission on record',nTotal,'on the plan',[
+        {t:'Submitted at some point', n:nSent,c:'#0a7a44'},
+        {t:'Never submitted',         n:nNot, c:'#6b7f92'}])}
       ${donut('Where it stands with AWPT',nWith,'on the plan',[
         {t:'Approved — RNC',  n:rnc,  c:'#0a7a44'},
         {t:'Under review',    n:ur,   c:'#b8860b'},
@@ -3777,9 +3765,6 @@ function buildPlanAnalysis(kind){
       <th class="c-hOut" title="The latest revision issued to AWPT and the code it came back with — RNC reviewed with no comments, RWC returned with comments, or still with AWPT if there is no answer yet">Last rev · code</th><th class="c-hDays">Cycles</th>
       <th class="c-hDays">Days late</th><th class="c-status">Progress</th>
     </tr></thead><tbody>${body}</tbody></table>
-    ${rows.dropped?`<div class="rnote">${rows.dropped} planned item${
-      rows.dropped===1?' refers to a document that has':'s refer to documents that have'
-      } since been deleted, and ${rows.dropped===1?'is':'are'} left out.</div>`:''}
     <div class="rfoot">Taif Ar Rjum LOD — ${esc(title)} · ${stamp}${
       USER?' · issued by '+esc(USER.name):''}</div>`;
 }
