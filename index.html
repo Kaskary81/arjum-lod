@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v108        2026-09-02
+     BUILD: v109        2026-09-02
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -1533,7 +1533,7 @@ const today=isoDay(new Date());
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-08-31 · v108';
+const BUILD='LOD 2026-08-31 · v109';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -4552,8 +4552,17 @@ function recovState(it){
 }
 function recoveryHTML(){
   if(!RECOV.loaded){
-    /* redraw whichever screen asked for it, not just the desktop one */
-    if(!RECOV.loading)loadRecovery().then(()=>{ MOBILE?mobRender():renderDash(); });
+    /* ===== THIS RE-RENDER MUST ONLY HAPPEN IF SOMETHING WAS LEARNED =====
+       Signed out, LIVE is false, so loadRecovery cannot read anything and
+       deliberately leaves `loaded` false — then this called mobRender, which
+       called this, for ever. Nothing showed it until the phone keyboard opened:
+       that fires a resize, checkMode re-entered the mobile shell, and the tab
+       locked solid. Re-render only when the read actually produced a plan, and
+       do not even start one when there is nobody signed in to read for. */
+    if(!LIVE)
+      return '<div class="empty">Sign in to see the recovery plan.</div>';
+    if(!RECOV.loading)
+      loadRecovery().then(()=>{ if(RECOV.loaded){ MOBILE?mobRender():renderDash(); } });
     return '<div class="empty">Reading the plan…</div>'; }
   const all=RECOV.items;
   if(!all.length)
