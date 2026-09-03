@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v107        2026-09-02
+     BUILD: v108        2026-09-02
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -1533,7 +1533,7 @@ const today=isoDay(new Date());
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-08-31 · v107';
+const BUILD='LOD 2026-08-31 · v108';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1562,9 +1562,41 @@ const closeMsg=()=>document.getElementById('msgwrap').classList.remove('on');
 document.getElementById('msgwrap').addEventListener('click',e=>{if(e.target.id==='msgwrap')closeMsg();});
 
 /* ---------------- api ---------------- */
+/* ===== EVERY REQUEST HAS A DEADLINE =====================================
+   Chrome on Android will leave a fetch pending indefinitely on a flaky mobile
+   connection — the promise never settles, so `finally` never runs. That is what
+   the frozen sign-in screen was: the button stuck on "Signing in…", or the
+   resumed session never finishing, with nothing to recover it and no message.
+   A request that has not answered inside the deadline is abandoned and says so,
+   and a single retry covers the dropped connection a phone hands you all day. */
+const NET_MS=20000;                    /* one request */
+const NET_BOOT_MS=8000;                /* the silent session resume at load */
+function netErr(e){
+  if(e&&e.name==='AbortError')
+    return new Error('The network did not answer. Check your connection and try again.');
+  if(e instanceof TypeError)
+    return new Error('Could not reach the server. Check your connection.');
+  return e;
+}
+async function fetchT(url,opts,ms){
+  const AC=window.AbortController;
+  const go=async()=>{
+    const c=AC?new AC():null;
+    const t=setTimeout(()=>{ try{ c&&c.abort(); }catch(e){} }, ms||NET_MS);
+    try{ return await fetch(url,c?{...(opts||{}),signal:c.signal}:opts); }
+    finally{ clearTimeout(t); }
+  };
+  try{ return await go(); }
+  catch(e){
+    /* one retry: a phone drops a connection far more often than a server fails,
+       and a second attempt costs a second where a dead screen costs the session */
+    if(e&&e.name==='AbortError')throw netErr(e);
+    try{ return await go(); }catch(e2){ throw netErr(e2); }
+  }
+}
 async function api(path,opts){
   const o={...opts}; o.headers={...H(),...(o.headers||{})};
-  const r=await fetch(SB_URL+'/rest/v1/'+path,o);
+  const r=await fetchT(SB_URL+'/rest/v1/'+path,o,o.timeoutMs);
   if(r.status===401||r.status===403){ signOut('Your session expired — please sign in again'); throw new Error('auth'); }
   if(!r.ok)throw new Error(r.status+' '+await r.text());
   // 201 from an insert, and 204 from an update, both come back with no body —
@@ -1574,9 +1606,9 @@ async function api(path,opts){
   if(!txt)return null;
   try{ return JSON.parse(txt); }catch(e){ return null; }
 }
-async function auth(path,body){
-  const r=await fetch(SB_URL+'/auth/v1/'+path,{method:'POST',
-    headers:{apikey:SB_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)});
+async function auth(path,body,ms){
+  const r=await fetchT(SB_URL+'/auth/v1/'+path,{method:'POST',
+    headers:{apikey:SB_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)},ms);
   const j=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(j.error_description||j.msg||j.message||'Sign-in failed');
   return j;
@@ -3936,7 +3968,7 @@ async function loadSnaps(){
 async function takeSnapshot(){
   if(!canEdit())return toast('Your account cannot record a snapshot');
   try{
-    await fetch(SB_URL+'/rest/v1/rpc/lod_take_snapshot',
+    await fetchT(SB_URL+'/rest/v1/rpc/lod_take_snapshot',
       {method:'POST',headers:H(),body:JSON.stringify({p_note:''})});
     await loadSnaps(); refresh(); toast('Snapshot recorded for today');
   }catch(e){ toast('Could not record the snapshot'); }
@@ -5810,7 +5842,7 @@ let DIRECTORY=[];
 async function loadDirectory(){
   const sel=document.getElementById('lname');
   try{
-    DIRECTORY=await fetch(SB_URL+'/rest/v1/lod_signin?order=seq.asc',
+    DIRECTORY=await fetchT(SB_URL+'/rest/v1/lod_signin?order=seq.asc',
       {headers:{apikey:SB_KEY,Authorization:'Bearer '+SB_KEY}}).then(r=>r.json());
     if(!Array.isArray(DIRECTORY)||!DIRECTORY.length)throw new Error('empty');
     sel.innerHTML='<option value="">Choose your name…</option>'+
@@ -5863,6 +5895,7 @@ async function doLogin(){
     try{localStorage.setItem('ab-session',JSON.stringify(
       {t:s.access_token,r:s.refresh_token,exp:Date.now()+(s.expires_in||3600)*1000}));
       const i=document.getElementById('lname').value; if(i!=='')localStorage.setItem('ab-who',i);}catch(e){}
+    btn.textContent='Loading the register…';
     await loadData();
     startApp();
   }catch(e){
@@ -5875,7 +5908,7 @@ async function resumeSession(){
   if(!s||!s.r)return false;
   try{
     const n=(s.exp&&s.exp>Date.now()+60000)?{access_token:s.t,refresh_token:s.r,expires_in:(s.exp-Date.now())/1000}
-      :await auth('token?grant_type=refresh_token',{refresh_token:s.r});
+      :await auth('token?grant_type=refresh_token',{refresh_token:s.r},NET_BOOT_MS);
     TOKEN=n.access_token;
     const me=await api('lod_members?user_id=eq.'+
       (n.user?n.user.id:(JSON.parse(atob(n.access_token.split('.')[1])).sub))+'&limit=1');
@@ -5914,16 +5947,18 @@ async function loadData(){
   try{ NOTIFS=await api('lod_notifs?order=id.desc&limit=100'); }catch(e){}
   NOTIF_MAX=NOTIFS.length?Math.max(...NOTIFS.map(n=>+n.id||0)):0;
   startLive();
-  await loadRevs();
-  await loadLegs();
-  await loadCommentCounts();
-  await loadPlanning();
+  /* THESE DO NOT DEPEND ON EACH OTHER. Run one after another they were eight
+     round trips in series — several seconds on a phone with the sign-in card
+     still on screen and the button disabled, which is most of what "frozen"
+     felt like. In parallel it is one round trip's worth of waiting, and one
+     slow table no longer holds up the other seven. */
+  await Promise.all([
+    loadRevs(), loadLegs(), loadCommentCounts(), loadPlanning(),
+    loadMembers(), loadSnaps(), loadAttention(),
+  ]);
   /* whatever the pre-sign-in render concluded about the recovery plan, it was
      working from an empty plan list — read it again now the real one is here */
   RECOV={loaded:false,items:[],loading:false};
-  await loadMembers();
-  await loadSnaps();
-  await loadAttention();
   touchSeen();
 }
 /* ================= staying up to date =================
