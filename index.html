@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v109        2026-09-02
+     BUILD: v110        2026-09-02
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -1182,6 +1182,26 @@ body.mobile .dayfilt button.on,body.mobile .dpre button.on,body.mobile .mdate bu
 /* the phone's scrollbar, in the phone's colours. The violet thumb above is a
    descendant-free selector, so it painted every scrolling element in the app —
    including the phone body, where it was the last purple thing left on screen. */
+/* the loupe — only ever on a phone, only while a finger is down */
+#loupe{position:fixed;left:10px;right:10px;z-index:1600;display:none;
+  background:var(--m-card);border-radius:16px;box-shadow:0 14px 40px rgba(0,0,0,.55);
+  padding:11px 12px 9px;pointer-events:none}
+#loupe.on{display:block}
+#loupe .lptitle{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--m-ink3);margin-bottom:8px}
+#loupe .lprow{display:flex;gap:5px;align-items:stretch}
+#loupe .lpseg{flex:1;min-width:52px;border-radius:11px;padding:8px 6px 7px;
+  background:var(--m-chip);border:2px solid transparent;text-align:center;
+  transition:transform .1s,border-color .1s,background .1s}
+#loupe .lpseg i{display:block;height:5px;border-radius:3px;margin-bottom:6px}
+#loupe .lpseg b{display:block;font-size:17px;font-weight:750;color:var(--m-ink);line-height:1}
+#loupe .lpseg span{display:block;font-size:9.5px;line-height:1.2;margin-top:3px;
+  color:var(--m-ink3);overflow:hidden}
+/* the one under the finger: bigger, outlined, and it keeps its own colour */
+#loupe .lpseg.on{border-color:var(--m-accent);background:var(--m-accent-soft);
+  transform:translateY(-3px)}
+#loupe .lpseg.on span{color:var(--m-ink2)}
+#loupe .lphint{font-size:10px;color:var(--m-ink3);text-align:center;margin-top:8px}
 body.mobile ::-webkit-scrollbar{width:5px;height:5px}
 body.mobile ::-webkit-scrollbar-track{background:transparent}
 body.mobile ::-webkit-scrollbar-thumb{background:var(--m-edge);border-radius:4px;border:0}
@@ -1533,7 +1553,7 @@ const today=isoDay(new Date());
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-08-31 · v109';
+const BUILD='LOD 2026-08-31 · v110';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -4749,7 +4769,8 @@ function legCards(leg){
       <div class="p">${esc(x.s)}</div>
       <div class="bar"><i style="width:${x.p}%;background:${x.c}"></i></div></div>`).join('');
   const bar=`<div class="ballbar legbar100">${rows.filter(x=>x.n).map(x=>
-      `<i data-lstate="${esc(x.k)}" style="width:${x.n/(total||1)*100}%;background:${x.c}"
+      `<i data-lstate="${esc(x.k)}" data-n="${x.n}" data-t="${esc(x.t)}" data-c="${x.c}"
+          style="width:${x.n/(total||1)*100}%;background:${x.c}"
           title="${esc(x.t)} — ${x.n}"><b>${x.n}</b></i>`).join('')}</div>`;
   const sum=rows.reduce((t,x)=>t+x.n,0), psum=rows.reduce((t,x)=>t+x.p,0);
   return `<div class="kpis">${tiles}</div>${bar}
@@ -4770,6 +4791,7 @@ function legDiscipline(leg){
     return `<div class="drow"><div class="dlab" title="${esc(x.d)}">${esc(x.d)}</div>
       <div class="dtrack"><div class="dbar" style="width:${x.n/max*100}%">${parts.map(p=>
         `<i data-d="${esc(x.d)}" data-lstate="${esc(p.st.k)}"
+            data-n="${p.v}" data-t="${esc(p.st.t)}" data-c="${p.st.c}"
             title="${esc(x.d)} — ${p.v} ${esc(p.st.t)}"
             style="flex:${p.v};background:${p.st.c}"></i>`).join('')}</div></div>
       <div class="dn">${x.n}</div><div class="dp">${x.n?Math.round(done/x.n*100):0}%</div></div>`;}).join('')}
@@ -4819,6 +4841,81 @@ function legDashHTML(leg){
       ${legTurnaround(leg)}</div>
     <div class="panel"><h3>By discipline</h3>${legDiscipline(leg)}</div></div>`;
 }
+/* ===== THE LOUPE ========================================================
+   A one-document slice of a stacked bar is about two pixels wide on a phone.
+   Tapping it is luck, and the tap that lands opens the wrong filter — which is
+   worse than no tap at all. So a press on any bar lifts its segments out into a
+   strip above the finger, each one wide enough to hit and labelled with its
+   state and count. Slide to move between them, lift to apply the same filter a
+   tap would have applied, slide off the strip to cancel. A quick tap still
+   behaves exactly as it did, so nothing anyone already knows is taken away. */
+let LOUPE=null;
+function loupeEl(){
+  if(LOUPE&&document.body.contains(LOUPE))return LOUPE;
+  LOUPE=document.createElement('div');
+  LOUPE.id='loupe'; LOUPE.setAttribute('aria-hidden','true');
+  document.body.appendChild(LOUPE);
+  return LOUPE;
+}
+function hideLoupe(){ if(LOUPE)LOUPE.classList.remove('on'); }
+function attachLoupe(root,go){
+  if(!MOBILE)return;
+  root.querySelectorAll('.dbar,.ballbar').forEach(bar=>{
+    const segs=[...bar.querySelectorAll('i[data-lstate]')].filter(x=>+(x.dataset.n||0)>0);
+    if(segs.length<2)return;                 /* one block is already easy to hit */
+    bar.style.touchAction='none';
+    let live=false, pick=-1, blocks=[];
+    const open=(y)=>{
+      const el=loupeEl();
+      /* proportional, but never below a thumb's width — that is the whole point */
+      el.innerHTML=`<div class="lptitle">${esc(segs[0].dataset.d||'All disciplines')}</div>
+        <div class="lprow">${segs.map((sg,i)=>
+          `<div class="lpseg" data-i="${i}" style="flex:${Math.max(1,+sg.dataset.n)}">
+             <i style="background:${sg.dataset.c||'#888'}"></i>
+             <b>${esc(sg.dataset.n)}</b><span>${esc(sg.dataset.t||'')}</span></div>`).join('')}</div>
+        <div class="lphint">Slide to choose · lift to filter</div>`;
+      el.classList.add('on');
+      const r=el.getBoundingClientRect();
+      el.style.top=Math.max(8,y-r.height-18)+'px';
+      blocks=[...el.querySelectorAll('.lpseg')];
+      live=true; pick=-1;
+    };
+    const at=(x)=>{
+      for(let i=0;i<blocks.length;i++){
+        const b=blocks[i].getBoundingClientRect();
+        if(x>=b.left&&x<=b.right)return i;
+      }
+      return -1;
+    };
+    const mark=(i)=>{
+      if(i===pick)return; pick=i;
+      blocks.forEach((b,j)=>b.classList.toggle('on',j===i));
+    };
+    bar.addEventListener('touchstart',e=>{
+      const t=e.touches[0]; if(!t)return;
+      open(bar.getBoundingClientRect().top);
+      /* start on whatever the finger is actually over in the ORIGINAL bar, so a
+         plain tap still picks the thing under the thumb */
+      let i=-1;
+      segs.forEach((sg,j)=>{const b=sg.getBoundingClientRect();
+        if(t.clientX>=b.left&&t.clientX<=b.right)i=j;});
+      mark(i>=0?i:at(t.clientX));
+    },{passive:true});
+    bar.addEventListener('touchmove',e=>{
+      if(!live)return;
+      const t=e.touches[0]; if(!t)return;
+      e.preventDefault();                    /* the page must not scroll under it */
+      mark(at(t.clientX));
+    },{passive:false});
+    const end=(apply)=>{
+      if(!live)return; live=false;
+      const i=pick; hideLoupe();
+      if(apply&&i>=0&&segs[i])go(segs[i].dataset.lstate,segs[i].dataset.d||'');
+    };
+    bar.addEventListener('touchend',()=>end(true));
+    bar.addEventListener('touchcancel',()=>end(false));
+  });
+}
 function wireLegDash(w,leg){
   /* On the phone there are no windows to open — the same click has to set the
      mobile register's own filters and switch to it, exactly as drillTo does. */
@@ -4837,6 +4934,7 @@ function wireLegDash(w,leg){
   w.body.querySelectorAll('[data-lstate]').forEach(el=>{
     el.style.cursor='pointer';
     el.onclick=()=>go(el.dataset.lstate, el.dataset.d||'');});
+  attachLoupe(w.body,go);
   w.body.querySelectorAll('.rctbl tr[data-go]').forEach(tr=>{
     tr.style.cursor='pointer';
     tr.onclick=()=>{ const r=AB.find(x=>x.id===+tr.dataset.go);
