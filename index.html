@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v113        2026-09-05
+     BUILD: v114        2026-09-05
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -765,8 +765,27 @@ body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent)
     font-variant-numeric:tabular-nums}
   table.rtbl tr.rtot td{border-top:.8pt solid #12304f;font-weight:700;
     background:#eef2f6!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .rfoot{margin-top:7pt;padding-top:3pt;border-top:.4pt solid #d9dee3;
-    font-size:6.2pt;color:#777}
+  /* The footer must never be the only thing on a page. In the flow it is a
+     block like any other, so when the table finished within a few points of the
+     bottom of a page the footer alone was pushed onto a sheet of its own,
+     carrying one grey line and nothing else. */
+  /* A RUNNING FOOTER, NOT A BLOCK AT THE END OF THE FLOW.
+     As a block the footer paginated like any other: when the table happened to
+     finish within a few points of the bottom of a page, the footer alone was
+     pushed onto a sheet of its own carrying one grey line and nothing else — a
+     whole empty page. Fixed, it costs no height in the flow, so it cannot start
+     a page, and the browser repeats it at the foot of every page, which is what
+     a report footer should have been doing anyway.
+     The band it occupies is reserved on EVERY page by a spacer tfoot on each
+     report table (preparePrint adds it). A tfoot with display:table-footer-group
+     repeats at the foot of each page's fragment of the table, so no row can ever
+     be laid underneath the footer — measured, not assumed. */
+  .rfoot{position:fixed;left:0;right:0;bottom:0;
+    padding-top:3pt;border-top:.4pt solid #d9dee3;
+    font-size:6.2pt;color:#777;background:#fff}
+  table.rtbl tfoot.rfsp{display:table-footer-group}
+  table.rtbl tfoot.rfsp td{height:15pt;padding:0;border:none!important;
+    background:transparent!important}
 }
 /* ============ overlays ============ */
 #msgwrap{position:fixed;inset:0;background:rgba(0,0,0,.32);display:none;z-index:1500;
@@ -1606,7 +1625,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-09-05 · v113';
+const BUILD='LOD 2026-09-05 · v114';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -3926,6 +3945,19 @@ function buildPlanAnalysis(kind){
     <div class="rfoot">Taif Ar Rjum LOD — ${esc(title)} · ${stamp}${
       USER?' · issued by '+esc(USER.name):''}</div>`;
 }
+/* Reserve the running footer's band on every printed page — see .rfoot in the
+   print stylesheet. Called by every report just before it prints. */
+function preparePrint(root){
+  if(!root)return;
+  root.querySelectorAll('table.rtbl').forEach(t=>{
+    if(t.querySelector('tfoot.rfsp'))return;
+    const cols=Math.max(1,t.querySelectorAll('thead th').length);
+    const tf=document.createElement('tfoot');
+    tf.className='rfsp';
+    tf.innerHTML='<tr><td colspan="'+cols+'"></td></tr>';
+    t.appendChild(tf);
+  });
+}
 async function exportPlanAnalysisPDF(kind){
   dayRoll();   /* a report may never disagree with its own date stamp */
   kind=kind||PLAN_KIND;
@@ -3940,6 +3972,7 @@ async function exportPlanAnalysisPDF(kind){
   if(!root){root=document.createElement('div');root.id='printroot';document.body.appendChild(root);}
   root.innerHTML=buildPlanAnalysis(kind);
   /* fourteen columns need the wide page */
+  preparePrint(root);
   document.body.classList.add('printing');
   const done=()=>{document.body.classList.remove('printing');
     window.removeEventListener('afterprint',done);};
@@ -3973,6 +4006,7 @@ function exportPlanPDF(planId){
         </tr>`;}).join('')}</tbody></table>
     <div class="rfoot">Taif Ar Rjum LOD — Weekly Submission Plan · ${esc(weekLabel(plan.weekStart))} · ${stamp}${
       USER?' · issued by '+esc(USER.name):''}</div>`;
+  preparePrint(root);
   document.body.classList.add('printing');
   const done=()=>{document.body.classList.remove('printing');window.removeEventListener('afterprint',done);};
   window.addEventListener('afterprint',done);
@@ -4081,6 +4115,7 @@ function exportEscalation(){
     <div class="rfoot">Working days counted Sunday to Thursday. IFI documents with no response within
       10 working days are deemed approved under the agreed procedure. · ${stamp}${
       USER?' · issued by '+esc(USER.name):''}</div>`;
+  preparePrint(root);
   document.body.classList.add('printing');
   const done=()=>{document.body.classList.remove('printing');window.removeEventListener('afterprint',done);};
   window.addEventListener('afterprint',done);
@@ -4250,6 +4285,7 @@ function exportPDF(){
   let root=document.getElementById('printroot');
   if(!root){ root=document.createElement('div'); root.id='printroot'; document.body.appendChild(root); }
   root.innerHTML=buildReport();
+  preparePrint(root);
   document.body.classList.add('printing');
   const done=()=>{ document.body.classList.remove('printing');
     window.removeEventListener('afterprint',done); };
