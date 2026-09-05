@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v115        2026-09-05
+     BUILD: v116        2026-09-05
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -1311,6 +1311,13 @@ table.rctbl td.bad{color:#d64545;font-weight:700}
 table.rctbl tr.hot td{background:rgba(214,69,69,.08)}
 table.rctbl tr.tot td{border-top:2px solid var(--ring);border-bottom:none}
 table.rctbl tr[data-go]:hover td{background:var(--chip)}
+/* the recovery chart is a filter: say so by responding to the pointer */
+.rcbar i[data-rc]{cursor:pointer;transition:filter .12s}
+.rcbar i[data-rc]:hover{filter:brightness(1.25)}
+.rclegend span[data-rc]{cursor:pointer;border-radius:6px;padding:1px 5px;margin:0 -5px}
+.rclegend span[data-rc]:hover{background:var(--chip)}
+table.rctbl tr[data-rcd]{cursor:pointer}
+table.rctbl tr[data-rcd]:hover td{background:var(--chip)}
 /* --- the same tables on a phone -------------------------------------------
    380px cannot hold five spelled-out headings and a weekday, so the figures
    were scrolling off the right edge where nobody saw them. */
@@ -1625,7 +1632,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-09-05 · v115';
+const BUILD='LOD 2026-09-05 · v116';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2025,7 +2032,7 @@ function openRegister(leg){
   const w=createWindow(m[0],m[1],m[2]);
   if(!w.grid)
     w.grid={win:w, leg:(leg||'all'), sort:{k:'sn',dir:1}, q:'', fd:'', fs:'', fx:'', fh:'',
-            fage:null, fageL:'', sel:null, cur:{r:0,c:0}, editing:null};
+            fage:null, fageL:'', fset:null, sel:null, cur:{r:0,c:0}, editing:null};
   GRID=w.grid;
   renderGrid(w.grid);
   return w;
@@ -2071,6 +2078,12 @@ function gridRows(){
     if(GRID.fx==='win'){const c=reviewClock(r);if(!c||c.over<=0)return false;}
     if(GRID.fage){ const a=heldDays(r); if(a==null)return false;
       if(a<GRID.fage[0]||a>GRID.fage[1])return false; }
+    /* A named set of documents, used when the thing clicked is not a register
+       state at all: the recovery bands are commitments (on time, late, overdue,
+       still to come) and a committed date is a date, neither of which any
+       column holds. The panel works out which documents it means and hands the
+       register the list, so the two can never drift apart. */
+    if(GRID.fset&&!GRID.fset.ids.has(r.id))return false;
     return true;
   });
   const {k,dir}=GRID.sort, c=COLBY[k];
@@ -2233,6 +2246,9 @@ function renderGrid(g){
     <input class="f" id="gq" placeholder="Search document, discipline or action" style="min-width:210px;flex:1" value="${esc(GRID.q)}">
     <button class="btn${PREFS.wrap?' on':''}" id="gwrapbtn" title="Show the full text of every cell">
       ${PREFS.wrap?'↵ Wrapped':'↵ Wrap text'}</button>
+    ${GRID.fset?`<button class="btn on" id="gfset"
+      title="Filtered to a set of documents chosen on the recovery chart — press to remove it"
+      >${esc(GRID.fset.label)} · ${GRID.fset.ids.size} ✕</button>`:''}
     <select class="f" id="gfd"><option value="">All disciplines</option>${
       DISCS.map(d=>`<option${GRID.fd===d?' selected':''}>${esc(d)}</option>`).join('')}</select>
     <select class="f" id="gfs"><option value="">All statuses</option>${
@@ -2291,6 +2307,9 @@ function wireGrid(g){
   const draw=()=>{GRID=G;renderGrid(G);};
   $('gq').oninput=e=>{G.q=e.target.value;const s=e.target.selectionStart;draw();
     const n=$('gq');n.focus();n.setSelectionRange(s,s);};
+  /* the set filter is invisible in the selects, so it gets its own chip — a
+     filter nobody can see or remove is worse than no filter at all */
+  const fsb=$('gfset'); if(fsb)fsb.onclick=()=>{G.fset=null;draw();};
   $('gfd').onchange=e=>{G.fd=e.target.value;G.fage=null;G.fageL='';draw();};
   $('gfs').onchange=e=>{G.fs=e.target.value;G.fage=null;G.fageL='';draw();};
   $('gfh').onchange=e=>{G.fh=e.target.value;G.fage=null;G.fageL='';draw();};
@@ -4203,9 +4222,10 @@ function attentionHTML(){
    as well as on a desktop (Print → Save as PDF). Landscape A4, tables only. */
 
 function filterLabel(){
-  const bits=[], S=MOBILE?{fd:MOB.fd,fs:MOB.fs,fx:MOB.f,q:MOB.q,fh:''}
-                        :{fd:GRID.fd,fs:GRID.fs,fx:GRID.fx,q:GRID.q,fh:GRID.fh};
+  const bits=[], S=MOBILE?{fd:MOB.fd,fs:MOB.fs,fx:MOB.f,q:MOB.q,fh:'',fset:MOB.fset}
+                        :{fd:GRID.fd,fs:GRID.fs,fx:GRID.fx,q:GRID.q,fh:GRID.fh,fset:GRID.fset};
   if(LEG!=='all')bits.push(LEG==='hesco'?'HESCO → AWPT':'AWPT → Maaden');
+  if(S.fset)bits.push(S.fset.label);
   if(S.fd)bits.push(S.fd);
   /* say the state in the leg's own words — "Code Awaiting reply" was nonsense */
   if(S.fs)bits.push(LEG==='maaden'?maadenLabel(S.fs):statusText(S.fs));
@@ -4332,7 +4352,7 @@ function drillTo(f){
     mobRender(); return;
   }
   if(!GRID||!WINS.has(GRID.win.id))openRegister();
-  Object.assign(GRID,{q:'',fd:'',fs:'',fx:'',fh:'',fage:null,fageL:'',...f});
+  Object.assign(GRID,{q:'',fd:'',fs:'',fx:'',fh:'',fage:null,fageL:'',fset:null,...f});
   renderGrid(); focusWin(GRID.win.id);
   toast('Showing '+([f.fh,f.fd,f.fs,f.fageL].filter(Boolean).join(' · ')||'everything'));
 }
@@ -4725,6 +4745,51 @@ function recovState(it){
   if(sent) return {k: sent<=it.plannedDate?'ontime':'late', sent, doc:d};
   return {k: it.plannedDate<today?'overdue':'due', sent:'', doc:d};
 }
+/* ---- pressing the recovery chart filters the register -------------------
+   The bands and the committed dates are properties of the PLAN, not of any
+   register column, so the panel resolves what was pressed into the actual
+   documents and hands the register that list. One function, wired from the
+   Overview, from the HESCO dashboard and from the phone, so the three can never
+   answer the same click differently. */
+function recovKept(){
+  return (RECOV.items||[]).map(it=>({it,s:recovState(it)})).filter(x=>x.s.k!=='gone');
+}
+const RC_LABEL={ontime:'on time',late:'submitted late',
+  overdue:'overdue, not submitted',due:'still to come'};
+function recovPick(kind,key){
+  const kept=recovKept();
+  const hit=kind==='band' ? kept.filter(x=>x.s.k===key)
+          : key==='__all' ? kept
+          : kept.filter(x=>x.it.plannedDate===key);
+  const label='Recovery plan · '+(kind==='band'
+      ? (RC_LABEL[key]||key)
+      : key==='__all' ? 'all commitments' : 'committed '+(niceDate(key)||key));
+  return {label, ids:new Set(hit.map(x=>x.it.docId))};
+}
+function wireRecovery(root,leg){
+  if(!root)return;
+  const apply=(kind,key)=>{
+    const f=recovPick(kind,key);
+    if(!f.ids.size)return toast('Nothing in that group');
+    if(MOBILE){
+      MOB.stack=[]; MOB.view='reg'; MOB.id=null;
+      MOB.q=''; MOB.f=''; MOB.fs=''; MOB.fd=''; MOB.fage=null; MOB.fageL='';
+      MOB.fset=f;
+      const b=document.getElementById('mbody'); if(b)b.scrollTop=0;
+      mobRender(); return;
+    }
+    const rw=openRegister(leg||'all'); const g=rw.grid; if(!g)return;
+    GRID=g; g.q=''; g.fd=''; g.fs=''; g.fh=''; g.fx=''; g.fage=null; g.fageL='';
+    g.fset=f; renderGrid(g); focusWin(rw.id);
+    toast(f.ids.size+' document'+(f.ids.size===1?'':'s')+' · '+f.label);
+  };
+  root.querySelectorAll('[data-rc]').forEach(el=>{
+    el.style.cursor='pointer';
+    el.onclick=e=>{ e.stopPropagation(); apply('band',el.dataset.rc); };});
+  root.querySelectorAll('[data-rcd]').forEach(el=>{
+    el.style.cursor='pointer';
+    el.onclick=e=>{ e.stopPropagation(); apply('date',el.dataset.rcd); };});
+}
 function recoveryHTML(){
   if(!RECOV.loaded){
     /* ===== THIS RE-RENDER MUST ONLY HAPPEN IF SOMETHING WAS LEARNED =====
@@ -4753,16 +4818,19 @@ function recoveryHTML(){
   const n=k=>st.filter(x=>x.k===k).length;
   const done=n('ontime')+n('late'), pct=Math.round(done/items.length*100);
 
-  const bar=`<div class="rcbar">
-      <i class="ontime" style="flex:${n('ontime')||0.001}"></i>
-      <i class="late"   style="flex:${n('late')||0.001}"></i>
-      <i class="overdue"style="flex:${n('overdue')||0.001}"></i>
-      <i class="due"    style="flex:${n('due')||0.001}"></i></div>
-    <div class="rclegend">
-      <span><i class="ontime"></i>${n('ontime')} on time</span>
-      <span><i class="late"></i>${n('late')} submitted late</span>
-      <span><i class="overdue"></i>${n('overdue')} overdue, not submitted</span>
-      <span><i class="due"></i>${n('due')} still to come</span>${gone
+  /* Pressing a band, or its legend entry, filters the register to exactly the
+     documents it counts — the same click the leg dashboards have always had.
+     A recovery band is not a register state (a document can be "submitted late"
+     whatever its code says), so the band hands over the document ids it counted
+     rather than a status to match on. */
+  const RCB=[['ontime','on time'],['late','submitted late'],
+             ['overdue','overdue, not submitted'],['due','still to come']];
+  const seg=k=>`<i class="${k}" data-rc="${k}" data-n="${n(k)}"
+      data-t="${esc(n(k)+' '+RCB.find(x=>x[0]===k)[1])}"
+      style="flex:${n(k)||0.001}" title="${esc(n(k)+' '+RCB.find(x=>x[0]===k)[1])}"></i>`;
+  const bar=`<div class="rcbar">${RCB.map(x=>seg(x[0])).join('')}</div>
+    <div class="rclegend">${RCB.map(([k,label])=>
+      `<span data-rc="${k}"><i class="${k}"></i>${n(k)} ${label}</span>`).join('')}${gone
         ?`<span class="rcgone">${gone} deleted, left out</span>`:''}</div>`;
 
   /* by committed date */
@@ -4776,13 +4844,13 @@ function recoveryHTML(){
   const table=`<table class="rctbl"><thead><tr>
       <th>Committed</th><th class="n">Docs</th><th class="n">Sent</th>
       <th class="n">Left</th><th class="n">%</th></tr></thead><tbody>
-    ${dates.map(r=>`<tr${r.d<today&&r.done<r.total?' class="hot"':''}>
+    ${dates.map(r=>`<tr data-rcd="${esc(r.d)}"${r.d<today&&r.done<r.total?' class="hot"':''}>
       <td><b>${niceDateWD(r.d)}</b></td>
       <td class="n">${r.total}</td>
       <td class="n good">${r.done||'—'}</td>
       <td class="n ${r.total-r.done?'bad':''}">${r.total-r.done||'—'}</td>
       <td class="n">${Math.round(r.done/r.total*100)}%</td></tr>`).join('')}
-    <tr class="tot"><td><b>Total</b></td><td class="n"><b>${items.length}</b></td>
+    <tr class="tot" data-rcd="__all"><td><b>Total</b></td><td class="n"><b>${items.length}</b></td>
       <td class="n good"><b>${done}</b></td><td class="n bad"><b>${items.length-done}</b></td>
       <td class="n"><b>${pct}%</b></td></tr></tbody></table>`;
 
@@ -5090,6 +5158,7 @@ function wireLegDash(w,leg){
     el.style.cursor='pointer';
     el.onclick=()=>go(el.dataset.lstate, el.dataset.d||'');});
   attachLoupe(w.body,go);
+  wireRecovery(w.body,leg);
   w.body.querySelectorAll('.rctbl tr[data-go]').forEach(tr=>{
     tr.style.cursor='pointer';
     tr.onclick=()=>{ const r=AB.find(x=>x.id===+tr.dataset.go);
@@ -5152,6 +5221,7 @@ function renderDashOne(w){
     LEGALL=b.dataset.leg; renderDash(); renderAllGrids(); });
   w.body.querySelectorAll('[data-openreg]').forEach(b=>b.onclick=()=>
     openRegister(b.dataset.openreg));
+  wireRecovery(w.body, w.kind==='dash'?'all':(w.leg||'all'));
   w.body.querySelectorAll('.rctbl tr[data-go]').forEach(tr=>{
     tr.style.cursor='pointer';
     tr.onclick=()=>{ const r=AB.find(x=>x.id===+tr.dataset.go);
@@ -5428,7 +5498,7 @@ async function openNotifs(){
 }
 
 /* ================= mobile shell ================= */
-const MOB={view:'dash',id:null,stack:[],q:'',f:'',fs:'',fd:'',fage:null,fageL:'',pick:false};
+const MOB={view:'dash',id:null,stack:[],q:'',f:'',fs:'',fd:'',fage:null,fageL:'',fset:null,pick:false};
 function isPhone(){
   if(location.hash==='#mobile')return true;
   if(location.hash==='#desktop')return false;
@@ -5488,6 +5558,7 @@ function mobRender(){
       LEG=b.dataset.leg; mobRender(); });
     if(MOB.view==='dash'&&(LEG==='hesco'||LEG==='maaden'))
       wireLegDash({body:mb}, LEG);
+    wireRecovery(mb, LEG);
     mb.querySelectorAll('.rctbl tr[data-go]').forEach(tr=>{
       tr.style.cursor='pointer';
       tr.onclick=()=>{ MOB.view='one'; MOB.id=+tr.dataset.go; mobRender(); };});
@@ -5559,6 +5630,7 @@ function mobRows(){
     if(MOB.fd&&r.discipline!==MOB.fd)return false;
     if(MOB.fage){ const a=heldDays(r); if(a==null)return false;
       if(a<MOB.fage[0]||a>MOB.fage[1])return false; }
+    if(MOB.fset&&!MOB.fset.ids.has(r.id))return false;
     if(MOB.f==='late'&&!(r.holder!=='Closed'&&r.plannedDate&&r.plannedDate<today))return false;
     return true;});
 }
@@ -5616,7 +5688,7 @@ function mobList(){
   const rows=mobRows();
   /* MOB.fs holds the STORED state, so 'Code '+it produced both a vocabulary leak
      and nonsense — "Code Awaiting reply". Same words the buttons use. */
-  const chips=[MOB.fd,
+  const chips=[MOB.fset&&MOB.fset.label, MOB.fd,
     MOB.fs&&(LEG==='maaden'?maadenLabel(MOB.fs):statusText(MOB.fs)),
     MOB.fageL&&(MOB.fageL+' with reviewer')].filter(Boolean);
   const applied=chips.length?`<div class="applied">
@@ -6007,7 +6079,8 @@ function wireMob(){
     MOB.fs=el.dataset.mfs; MOB.f=''; MOB.fage=null; MOB.fageL=''; mobRender();});
   const mp=document.getElementById('mpdf'); if(mp)mp.onclick=exportPDF;
   const mc=document.getElementById('mclear');
-  if(mc)mc.onclick=()=>{MOB.fs='';MOB.fd='';MOB.f='';MOB.q='';MOB.fage=null;MOB.fageL='';mobRender();};
+  if(mc)mc.onclick=()=>{MOB.fs='';MOB.fd='';MOB.f='';MOB.q='';MOB.fage=null;MOB.fageL='';
+    MOB.fset=null;mobRender();};
   const s=document.getElementById('msearch');
   if(s)s.oninput=()=>{MOB.q=s.value;const p=s.selectionStart;mobRender();
     const n=document.getElementById('msearch');if(n){n.focus();n.setSelectionRange(p,p);}};
