@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v107        2026-09-02
+     BUILD: v113        2026-09-05
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -361,6 +361,16 @@ table.ptbl{width:100%;border-collapse:collapse;font-size:12px}
 table.ptbl th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.06em;
   text-transform:uppercase;color:var(--muted);padding:5px 7px;border-bottom:1px solid var(--grid)}
 table.ptbl td{padding:5px 7px;border-bottom:1px solid var(--grid);vertical-align:middle}
+/* the document number and its name open the submission history */
+/* the code bands: one line per group, with how many are in it */
+table.ptbl tr.pband td{background:rgba(127,127,127,.16);font-weight:700;
+  font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:6px 7px;
+  border-top:1px solid var(--grid);border-bottom:1px solid var(--grid)}
+table.ptbl tr.pband:first-child td{border-top:none}
+table.ptbl tr.pband td.n{text-align:right;letter-spacing:0}
+table.ptbl td.ctr .pill{white-space:nowrap}
+table.ptbl td.phist{cursor:pointer}
+table.ptbl td.phist:hover{color:var(--accent);text-decoration:underline}
 table.ptbl select,table.ptbl input{padding:4px 7px;font-size:12px;border-radius:7px;
   border:1px solid var(--ring);background:var(--field);color:var(--ink);width:100%}
 .alist{display:flex;gap:7px;flex-wrap:wrap}
@@ -637,35 +647,49 @@ body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent)
     font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
   .dn .dnv{font-size:9px;font-weight:700;fill:#12304f}
   .dn .dnl{font-size:3.4px;fill:#777;letter-spacing:.2px}
-  /* the planned-against-actual curve: two running totals and the gap between */
-  .cv{width:100%;height:52pt;display:block;margin-bottom:1pt}
+  /* the planned-against-actual curve: two running totals and the gap between.
+     It sits on a row of its own, the full width of the page. Squeezed into a
+     third of the width alongside the donuts there was no room to name the dates,
+     so the only labels were at the ends of the two lines and they printed on top
+     of one another. Full width, every committed date carries its own two
+     figures and nothing overlaps anything. */
+  .cvrow{margin-bottom:7pt}
+  .cv{width:100%;height:auto;display:block;margin-bottom:2pt}
   .cv .ax{stroke:#c3ced9;stroke-width:.5}
-  .cv .now{stroke:#c3ced9;stroke-width:.5;stroke-dasharray:2 2}
-  .cv .pl{fill:none;stroke:#6b7f92;stroke-width:1.6;stroke-dasharray:3 2;
+  .cv line.now{stroke:#8fa0b0;stroke-width:.4;stroke-dasharray:1.4 1.4}
+  .cv .pl{fill:none;stroke:#6b7f92;stroke-width:.9;stroke-dasharray:2 1.4;
     stroke-linejoin:round;stroke-linecap:round}
-  .cv .ac{fill:none;stroke:#0a7a44;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+  .cv .ac{fill:none;stroke:#0a7a44;stroke-width:1.1;stroke-linejoin:round;stroke-linecap:round}
   /* today's actual figure, ringed in the surface colour so it reads as the
      end of the line rather than another point on it */
-  .cv .nowdot{fill:#0a7a44;stroke:#fff;stroke-width:1}
+  .cv .nowdot{fill:#0a7a44;stroke:#fff;stroke-width:.7}
   .cv text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:5.4px}
-  .cv .cvy{fill:#777;text-anchor:end}
-  .cv .cvx{fill:#777;font-size:5px}
+  .cv .cvy{fill:#777;text-anchor:end;font-size:3.4px}
+  .cv .cvx{fill:#777;font-size:3.2px;text-anchor:middle}
+  .cv .cvx.now{fill:#12304f;font-weight:700;stroke:none}
+  /* the running total at each committed date: the planned figure sits above the
+     planned line, the submitted figure below the submitted line, so the two
+     never meet however close the lines run */
+  .cv .np{fill:#5c6b7a;font-size:3.4px;font-weight:700;text-anchor:middle}
+  .cv .na{fill:#0a7a44;font-size:3.4px;font-weight:700;text-anchor:middle}
+  .cv .tk{stroke:#c3ced9;stroke-width:.4}
   /* every label is drawn with a white halo behind it, so it stays legible
      wherever a line happens to run — they were sitting straight on the lines */
-  .cv text{paint-order:stroke;stroke:#fff;stroke-width:2.4px;stroke-linejoin:round}
-  .cv .cve{font-size:6px;font-weight:700}
+  .cv text{paint-order:stroke;stroke:#fff;stroke-width:1.5px;stroke-linejoin:round}
+  .cv .cve{font-size:4.2px;font-weight:700}
   .cv .pl-t{fill:#5c6b7a}
   .cv .ac-t{fill:#0a7a44}
   /* the shortfall at today, drawn as the distance between the two lines --
      the gap is the whole point of the chart, so it gets its own mark */
-  .cv .gap{stroke:#b3241f;stroke-width:1.6;stroke-linecap:round}
-  .cv .gapc{stroke:#b3241f;stroke-width:.8;stroke-linecap:round}
+  .cv .gap{stroke:#b3241f;stroke-width:.9;stroke-linecap:round}
+  .cv .gapc{stroke:#b3241f;stroke-width:.5;stroke-linecap:round}
   .cv .gp-t{fill:#b3241f}
   .rdempty{font-size:6.2pt;color:#777;font-style:italic;padding:6pt 0}
   .lgnote{font-size:5.6pt;color:#777;margin-top:1.5pt}
   .rdleg{flex:1;min-width:0}
   .rdleg .lg{display:flex;align-items:center;gap:3pt;font-size:6.2pt;line-height:1.5;
     white-space:nowrap}
+  .cvrow .rdleg{display:flex;gap:14pt;flex-wrap:wrap}
   .rdleg .lg i{width:5pt;height:5pt;border-radius:1pt;flex:none;
     -webkit-print-color-adjust:exact;print-color-adjust:exact}
   .rdleg .lg span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:#333}
@@ -1182,6 +1206,26 @@ body.mobile .dayfilt button.on,body.mobile .dpre button.on,body.mobile .mdate bu
 /* the phone's scrollbar, in the phone's colours. The violet thumb above is a
    descendant-free selector, so it painted every scrolling element in the app —
    including the phone body, where it was the last purple thing left on screen. */
+/* the loupe — only ever on a phone, only while a finger is down */
+#loupe{position:fixed;left:10px;right:10px;z-index:1600;display:none;
+  background:var(--m-card);border-radius:16px;box-shadow:0 14px 40px rgba(0,0,0,.55);
+  padding:11px 12px 9px;pointer-events:none}
+#loupe.on{display:block}
+#loupe .lptitle{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--m-ink3);margin-bottom:8px}
+#loupe .lprow{display:flex;gap:5px;align-items:stretch}
+#loupe .lpseg{flex:1;min-width:52px;border-radius:11px;padding:8px 6px 7px;
+  background:var(--m-chip);border:2px solid transparent;text-align:center;
+  transition:transform .1s,border-color .1s,background .1s}
+#loupe .lpseg i{display:block;height:5px;border-radius:3px;margin-bottom:6px}
+#loupe .lpseg b{display:block;font-size:17px;font-weight:750;color:var(--m-ink);line-height:1}
+#loupe .lpseg span{display:block;font-size:9.5px;line-height:1.2;margin-top:3px;
+  color:var(--m-ink3);overflow:hidden}
+/* the one under the finger: bigger, outlined, and it keeps its own colour */
+#loupe .lpseg.on{border-color:var(--m-accent);background:var(--m-accent-soft);
+  transform:translateY(-3px)}
+#loupe .lpseg.on span{color:var(--m-ink2)}
+#loupe .lphint{font-size:10px;color:var(--m-ink3);text-align:center;margin-top:8px}
 body.mobile ::-webkit-scrollbar{width:5px;height:5px}
 body.mobile ::-webkit-scrollbar-track{background:transparent}
 body.mobile ::-webkit-scrollbar-thumb{background:var(--m-edge);border-radius:4px;border:0}
@@ -1426,6 +1470,19 @@ const maadenLabel=v=>{const m=MAADEN_GRADE[v]; return m?m.g+' — '+m.t:(v||'');
    A, C, R and I, never "Code B". The stored value is untouched — filters,
    scoring and the database all keep the internal name — this is the label only. */
 const statusText=v=>MAADEN_GRADE[v]?maadenLabel(v):(v||'');
+/* The plan's Code column carries both legs at once. "Under AWPT review" says
+   whose desk it is on; plain "Under review" did not, and next to it that reads
+   as the same review. The Client leg is named here for what it is. */
+const planCodeLabel=v=>(v==='Under review'||v==='Under Client review')
+  ? 'Under Maaden review' : (MAADEN_GRADE[v]?maadenLabel(v):v||'');
+/* The plan reads as a to-do list, so its groups run in the order somebody has
+   to act: what has not left the building, what has come back to be redone,
+   what is sitting on a reviewer's desk, then what is finished. */
+const PLAN_CODE_ORDER=['Not Submitted','Not issued','RWC','On hold',
+  'Under AWPT review','Under review','Under Client review','RNC',
+  'Rejected','Replied','Code B','Code A','Deemed'];
+const planCodeRank=v=>{const i=PLAN_CODE_ORDER.indexOf(v||'Not Submitted');
+  return i<0?PLAN_CODE_ORDER.length:i;};
 /* the short form, for a narrow pill or a phone card */
 const statusCode=v=>MAADEN_GRADE[v]?MAADEN_GRADE[v].g:(v||'');
 const LCOLOR={'Code A':'#0f9d58','Code B':'#6fc38a','Under Client review':'#f0b429',
@@ -1527,13 +1584,29 @@ let NOTIFS=[], ACTS=[];
 const isoDay=d=>{const x=(d instanceof Date)?d:new Date(d);
   return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+
          String(x.getDate()).padStart(2,'0');};
-const today=isoDay(new Date());
+/* `today` used to be fixed the moment the page loaded. The app is left open for
+   days at a time, so a tab opened on the 3rd went on calling the 3rd "today":
+   a commitment dated 03-09 still printed "Due 03-09" on the 5th, under a report
+   header that took its own date stamp live and said 05 September. Same page,
+   two different todays. It now rolls over, and whatever is on screen is redrawn
+   the moment it does. */
+let today=isoDay(new Date());
+function dayRoll(){
+  const d=isoDay(new Date());
+  if(d===today)return false;
+  today=d;
+  try{ if(typeof MOBILE!=='undefined'&&MOBILE)mobRender(); else refresh(); }catch(e){}
+  return true;
+}
+setInterval(dayRoll,60000);
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden)dayRoll(); });
+window.addEventListener('focus',dayRoll);
 /* Was an empty map, so every place that asked for a short discipline silently
    got the long one back. On a phone card "MECHANICAL" eats the line that has to
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-08-31 · v107';
+const BUILD='LOD 2026-09-05 · v113';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1562,9 +1635,41 @@ const closeMsg=()=>document.getElementById('msgwrap').classList.remove('on');
 document.getElementById('msgwrap').addEventListener('click',e=>{if(e.target.id==='msgwrap')closeMsg();});
 
 /* ---------------- api ---------------- */
+/* ===== EVERY REQUEST HAS A DEADLINE =====================================
+   Chrome on Android will leave a fetch pending indefinitely on a flaky mobile
+   connection — the promise never settles, so `finally` never runs. That is what
+   the frozen sign-in screen was: the button stuck on "Signing in…", or the
+   resumed session never finishing, with nothing to recover it and no message.
+   A request that has not answered inside the deadline is abandoned and says so,
+   and a single retry covers the dropped connection a phone hands you all day. */
+const NET_MS=20000;                    /* one request */
+const NET_BOOT_MS=8000;                /* the silent session resume at load */
+function netErr(e){
+  if(e&&e.name==='AbortError')
+    return new Error('The network did not answer. Check your connection and try again.');
+  if(e instanceof TypeError)
+    return new Error('Could not reach the server. Check your connection.');
+  return e;
+}
+async function fetchT(url,opts,ms){
+  const AC=window.AbortController;
+  const go=async()=>{
+    const c=AC?new AC():null;
+    const t=setTimeout(()=>{ try{ c&&c.abort(); }catch(e){} }, ms||NET_MS);
+    try{ return await fetch(url,c?{...(opts||{}),signal:c.signal}:opts); }
+    finally{ clearTimeout(t); }
+  };
+  try{ return await go(); }
+  catch(e){
+    /* one retry: a phone drops a connection far more often than a server fails,
+       and a second attempt costs a second where a dead screen costs the session */
+    if(e&&e.name==='AbortError')throw netErr(e);
+    try{ return await go(); }catch(e2){ throw netErr(e2); }
+  }
+}
 async function api(path,opts){
   const o={...opts}; o.headers={...H(),...(o.headers||{})};
-  const r=await fetch(SB_URL+'/rest/v1/'+path,o);
+  const r=await fetchT(SB_URL+'/rest/v1/'+path,o,o.timeoutMs);
   if(r.status===401||r.status===403){ signOut('Your session expired — please sign in again'); throw new Error('auth'); }
   if(!r.ok)throw new Error(r.status+' '+await r.text());
   // 201 from an insert, and 204 from an update, both come back with no body —
@@ -1574,9 +1679,9 @@ async function api(path,opts){
   if(!txt)return null;
   try{ return JSON.parse(txt); }catch(e){ return null; }
 }
-async function auth(path,body){
-  const r=await fetch(SB_URL+'/auth/v1/'+path,{method:'POST',
-    headers:{apikey:SB_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)});
+async function auth(path,body,ms){
+  const r=await fetchT(SB_URL+'/auth/v1/'+path,{method:'POST',
+    headers:{apikey:SB_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)},ms);
   const j=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(j.error_description||j.msg||j.message||'Sign-in failed');
   return j;
@@ -2973,15 +3078,24 @@ async function openPlans(){
       ${plan&&PLAN_VIEW!=='gantt'?`<div class="panel">${items.length?`
         <table class="ptbl"><thead><tr><th>Document</th><th>Name</th><th>Discipline</th>
           <th>Responsible</th><th>Target</th><th>Progress</th><th>Code</th><th>History</th></tr></thead><tbody>
-        ${items.map(it=>{const r=AB.find(a=>a.id===it.docId)||{};
+        ${(()=>{
+          /* GROUPED BY CODE. A flat run of 37 rows made the reader do the
+             sorting: everything still to be issued, everything AWPT has sent
+             back, and everything already approved were interleaved. Each code
+             is now its own band, in the order somebody has to act on them, and
+             inside a band the oldest target date leads so the worst case in
+             each group is its first line. The row itself is unchanged. */
+          const row=it=>{const r=AB.find(a=>a.id===it.docId)||{};
           const k=r.status||'Not Submitted';
           /* A document deleted from the register used to leave a blank row here,
              which invites somebody to tidy it away — and removing the row
              removes the commitment with it. Say what it is instead. */
           const gone=!r.id;
           return `<tr data-i="${it.id}"${gone?' class="pgone"':''}>
-            <td class="mono">${gone?'<span class="hint">deleted</span>':esc(r.ref||'—')}</td>
-            <td>${gone?'<span class="hint">This document is in the bin. Restore it from '+
+            <td class="mono${gone?'':' phist'}"${gone?'':' data-hist="'+it.docId+
+                '" title="Submission history"'}>${gone?'<span class="hint">deleted</span>':esc(r.ref||'—')}</td>
+            <td class="${gone?'':'phist'}"${gone?'':' data-hist="'+it.docId+
+                '" title="Submission history"'}>${gone?'<span class="hint">This document is in the bin. Restore it from '+
                   'the menu, or remove this row to drop the commitment.</span>':esc(r.title||'')}</td>
             <td class="hint">${esc(SHORT_DISC[r.discipline]||r.discipline||'')}</td>
             <td><input class="f pa" data-i="${it.id}" list="paList" autocomplete="off"
@@ -2991,13 +3105,28 @@ async function openPlans(){
             <td><span class="pstate ${itemState(it,plan).cls}">${esc(itemState(it,plan).label)}</span></td>
             <td class="ctr">${k==='Not Submitted'
               ?'<span class="pill s-N">Not sub.</span>'
-              :statusPill(k,MAADEN_GRADE[k]?maadenLabel(k):k)}</td>
+              :statusPill(k,planCodeLabel(k),MAADEN_GRADE[k]
+                 ?'Maaden code '+MAADEN_GRADE[k].g+' — '+MAADEN_GRADE[k].d:planCodeLabel(k))}</td>
             <td style="white-space:nowrap">
               <button class="btn" data-hist="${it.docId}" style="padding:2px 8px"
                 title="Submission history">⟲</button>
               <button class="btn" data-rm="${it.id}"${canEdit()?'':' disabled'}
                 style="padding:2px 8px" title="Remove from the plan">✕</button></td>
-          </tr>`;}).join('')}
+          </tr>`;};
+          const codeOf=it=>{const r=AB.find(a=>a.id===it.docId)||{};
+            return r.status||'Not Submitted';};
+          const bands=[];
+          items.slice()
+            .sort((a,b)=>(planCodeRank(codeOf(a))-planCodeRank(codeOf(b)))
+              ||String(a.plannedDate||'').localeCompare(String(b.plannedDate||''))
+              ||a.id-b.id)
+            .forEach(it=>{const c=codeOf(it);
+              if(!bands.length||bands[bands.length-1].c!==c)bands.push({c,rows:[]});
+              bands[bands.length-1].rows.push(it);});
+          return bands.map(b=>`<tr class="pband"><td colspan="7">${
+              esc(b.c==='Not Submitted'?'Not issued':planCodeLabel(b.c))}</td>
+            <td class="n">${b.rows.length}</td></tr>`+b.rows.map(row).join('')).join('');
+        })()}
         </tbody></table>`
         :'<div class="empty"><b>Nothing planned for this week</b>Select documents in the register, then press “Add selected documents”.</div>'}
       </div>`:''}
@@ -3548,14 +3677,19 @@ function buildPlanAnalysis(kind){
     const P=dts.map(d=>rs.filter(x=>x.it.plannedDate&&x.it.plannedDate<=d).length);
     const A=dts.map(d=>rs.filter(x=>sentOn(x)&&sentOn(x)<=d).length);
     const top=Math.max(1,P[P.length-1]);
-    /* viewBox units; room on the right for the end labels */
-    const L=13,R=26,Tp=9,B=13,W=200,H=70;
+    /* viewBox units. The panel is the full width of the page now, so the box is
+       wide and shallow: at print that works out around 7pt of text, and every
+       committed date has room for its own two figures. */
+    const L=20,R=10,Tp=9,B=15,W=340,H=46;
     /* A REAL time axis, not one step per date. Spacing the dates evenly put the
        today line on the next committed date instead of on today, and it also
        lied about the shape — three days and one day were drawn the same width. */
     const t=d=>Date.parse(d), t0=t(dts[0]), t1=t(dts[dts.length-1]);
     const span=Math.max(1,t1-t0);
-    const px=d=>L+((t(d)-t0)/span)*(W-L-R);
+    /* a pad inside the axis: without it the first date's figure sat on top of
+       the zero on the y-axis */
+    const PAD=5;
+    const px=d=>L+PAD+((t(d)-t0)/span)*(W-L-R-PAD);
     const py=v=>H-B-(v/top)*(H-Tp-B);
     /* The planned line runs the whole programme; the ACTUAL line stops at today,
        because there is no actual beyond today. Drawing it on to the last
@@ -3565,46 +3699,69 @@ function buildPlanAnalysis(kind){
     const iNow=upto.length-1;
     const path=(a,ds)=>ds.map((d,i)=>(i?'L':'M')+px(d).toFixed(1)+' '+py(a[i]).toFixed(1)).join(' ');
     const dot=(a,ds,c)=>ds.map((d,i)=>`<circle cx="${px(d).toFixed(1)}" cy="${py(a[i]).toFixed(1)}"
-      r="1.5" fill="${c}"/>`).join('');
+      r="0.9" fill="${c}"/>`).join('');
     const nowX=px(today);
-    const day=d=>{const x=new Date(d);return String(x.getDate()).padStart(2,'0')+' '+
-      x.toLocaleDateString('en-GB',{month:'short'});};
+    const day=d=>{const x=new Date(d);return x.getDate()+'/'+(x.getMonth()+1);};
     const lastP=P[P.length-1];
     /* the two figures the panel is FOR: what the plan asked for in total, and
        how many of those documents have actually gone to AWPT */
     const dueP=lastP;
     const dueA=rs.filter(x=>sentOn(x)).length;
-    /* how many of the shortfall answer this plan's committed date rather than
-       merely existing — the one sentence that ties this panel to the table */
-    const answering=rs.filter(x=>x.st.k==='done'||x.st.k==='late').length;
     /* what the red bar spans: the two lines as they stand at today */
     const gap=Math.max(0,P[iNow]-A[iNow]);
-    return `<div class="rdo"><h4>${esc(title)}</h4>
+    /* ---- one label per date, and nothing printed on top of anything --------
+       The two end labels this used to carry ("44 planned" and "32 submitted")
+       sat wherever the lines happened to end and ran into each other, which is
+       what made the chart unreadable. They are gone: the running total is now
+       printed AT every committed date — the planned figure above the planned
+       line, the submitted figure below the submitted line, so the two rows of
+       numbers open away from each other and the band between the lines stays
+       clear for the shortfall. A label is only drawn if it clears the last one
+       drawn, so a plan with dates a day apart thins itself out instead of
+       overprinting. */
+    const MIN_D=9.5, MIN_N=6;               /* clearance in viewBox units */
+    let lastD=-99, lastNp=-99, lastNa=-99;
+    const marks=dts.map((d,i)=>{
+      const x=px(d), out=[];
+      if(x-lastD>=MIN_D){
+        lastD=x;
+        out.push(`<line class="tk" x1="${x.toFixed(1)}" y1="${H-B}" x2="${x.toFixed(1)}" y2="${H-B+1.4}"/>`);
+        out.push(`<text class="cvx${d===today?' now':''}" x="${x.toFixed(1)}" y="${H-B+7.6}">${day(d)}</text>`);
+      }
+      /* Which line is on top is not fixed. Several documents went to AWPT
+         before the date HESCO committed to, so early in the programme the
+         submitted line runs ABOVE the planned one. A fixed "planned above,
+         submitted below" rule printed the two figures on top of each other
+         exactly there. The label follows its own line outwards instead: the
+         higher line's figure sits above it, the lower line's below. */
+      const up=A[i]>P[i];
+      if(x-lastNp>=MIN_N){ lastNp=x;
+        out.push(`<text class="np" x="${x.toFixed(1)}" y="${
+          (up?py(P[i])+3.6:py(P[i])-2.1).toFixed(1)}">${P[i]}</text>`); }
+      if(d<=today&&x-lastNa>=MIN_N){ lastNa=x;
+        out.push(`<text class="na" x="${x.toFixed(1)}" y="${
+          (up?py(A[i])-2.1:py(A[i])+3.6).toFixed(1)}">${A[i]}</text>`); }
+      return out.join('');
+    }).join('');
+    return `<div class="rdo cvrow"><h4>${esc(title)}</h4>
       <svg class="cv" viewBox="0 0 ${W} ${H}" role="img"
         aria-label="${dueA} of the ${lastP} documents on the plan have been submitted to AWPT">
         <line class="ax" x1="${L}" y1="${H-B}" x2="${W-R}" y2="${H-B}"/>
         <line class="ax" x1="${L}" y1="${Tp}" x2="${L}" y2="${H-B}"/>
-        <text class="cvy" x="${L-2}" y="${py(top)+2}">${top}</text>
-        <text class="cvy" x="${L-2}" y="${H-B+2}">0</text>
+        <text class="cvy" x="${L-3}" y="${py(top)+1.2}">${top}</text>
+        <text class="cvy" x="${L-3}" y="${H-B+1.2}">0</text>
         <line class="now" x1="${nowX.toFixed(1)}" y1="${Tp}" x2="${nowX.toFixed(1)}" y2="${H-B}"/>
-        <text class="cvx" x="${nowX.toFixed(1)}" y="${H-B+9}" text-anchor="middle">${day(today)}</text>
-        <text class="cvx" x="${L}" y="${H-B+9}">${day(dts[0])}</text>
-        ${(dts[dts.length-1]!==today && (W-R)-nowX>22)
-           ?`<text class="cvx" x="${W-R}" y="${H-B+9}"
-             text-anchor="end">${day(dts[dts.length-1])}</text>`:''}
         <path class="pl" d="${path(P,dts)}"/>${dot(P,dts,'#6b7f92')}
         <path class="ac" d="${path(A.slice(0,iNow+1),upto)}"/>${
           dot(A.slice(0,iNow+1),upto,'#0a7a44')}
         ${gap>0?`<line class="gap" x1="${nowX.toFixed(1)}" y1="${py(A[iNow]).toFixed(1)}"
             x2="${nowX.toFixed(1)}" y2="${py(P[iNow]).toFixed(1)}"/>
-          <line class="gapc" x1="${(nowX-1.8).toFixed(1)}" y1="${py(P[iNow]).toFixed(1)}"
-            x2="${(nowX+1.8).toFixed(1)}" y2="${py(P[iNow]).toFixed(1)}"/>
-          <text class="cve gp-t" x="${(nowX+3.4).toFixed(1)}"
-            y="${((py(A[iNow])+py(P[iNow]))/2+2).toFixed(1)}">${gap} behind</text>`:''}
-        <circle class="nowdot" cx="${nowX.toFixed(1)}" cy="${py(A[iNow]).toFixed(1)}" r="2.4"/>
-        <text class="cve pl-t" x="${(W-R+3)}" y="${py(lastP)+2}">${lastP} planned</text>
-        <text class="cve ac-t" x="${(nowX-3).toFixed(1)}" y="${(py(A[iNow])+8).toFixed(1)}"
-          text-anchor="end">${A[iNow]} submitted</text>
+          <line class="gapc" x1="${(nowX-1.2).toFixed(1)}" y1="${py(P[iNow]).toFixed(1)}"
+            x2="${(nowX+1.2).toFixed(1)}" y2="${py(P[iNow]).toFixed(1)}"/>
+          <text class="cve gp-t" x="${(nowX-2.2).toFixed(1)}" text-anchor="end"
+            y="${((py(A[iNow])+py(P[iNow]))/2+1.4).toFixed(1)}">${gap} behind</text>`:''}
+        <circle class="nowdot" cx="${nowX.toFixed(1)}" cy="${py(A[iNow]).toFixed(1)}" r="1.4"/>
+        ${marks}
       </svg>
       <div class="rdleg">
         <div class="lg"><i style="background:#6b7f92"></i><span>Planned to submit</span>
@@ -3613,6 +3770,7 @@ function buildPlanAnalysis(kind){
           <b>${dueA}</b><u>${dueP?Math.round(dueA/dueP*100):0}%</u></div>
         <div class="lg"><i style="background:#b3241f"></i><span>Not submitted</span>
           <b>${dueP-dueA}</b><u>${dueP?Math.round((dueP-dueA)/dueP*100):0}%</u></div>
+      </div>
       </div></div>`;
   };
   const donut=(title,base,baseNote,segs,foot)=>{
@@ -3755,8 +3913,8 @@ function buildPlanAnalysis(kind){
         {t:'Reviewed, no code',n:repl,c:'#5c6b7a'},
         {t:'On hold',         n:hold, c:'#7030a0'},
         {t:'Never submitted', n:never,c:'#6b7f92'}])}
-      ${curve('Planned against actual',rows)}
     </div>
+    ${curve('Planned against actual — running totals at each committed date',rows)}
     <table class="rtbl"><thead><tr>
       <th class="c-idx">#</th><th class="c-ref">Document number</th>
       <th class="c-title">Submittal name</th><th class="c-discipline">Discipline</th>
@@ -3769,6 +3927,7 @@ function buildPlanAnalysis(kind){
       USER?' · issued by '+esc(USER.name):''}</div>`;
 }
 async function exportPlanAnalysisPDF(kind){
+  dayRoll();   /* a report may never disagree with its own date stamp */
   kind=kind||PLAN_KIND;
   const weeks=PLANS.filter(p=>(p.kind||'submission')===kind);
   if(!weeks.length)return toast('No '+(kind==='review'?'review':'submission')+' weeks to analyse');
@@ -3790,6 +3949,7 @@ async function exportPlanAnalysisPDF(kind){
 }
 
 function exportPlanPDF(planId){
+  dayRoll();   /* a report may never disagree with its own date stamp */
   const plan=PLANS.find(p=>p.id===planId), items=PITEMS[planId]||[];
   if(!items.length)return toast('Nothing on this plan to export');
   let root=document.getElementById('printroot');
@@ -3936,7 +4096,7 @@ async function loadSnaps(){
 async function takeSnapshot(){
   if(!canEdit())return toast('Your account cannot record a snapshot');
   try{
-    await fetch(SB_URL+'/rest/v1/rpc/lod_take_snapshot',
+    await fetchT(SB_URL+'/rest/v1/rpc/lod_take_snapshot',
       {method:'POST',headers:H(),body:JSON.stringify({p_note:''})});
     await loadSnaps(); refresh(); toast('Snapshot recorded for today');
   }catch(e){ toast('Could not record the snapshot'); }
@@ -4084,6 +4244,7 @@ function buildReport(){
       USER?' · issued by '+esc(USER.name):''}</div>`;
 }
 function exportPDF(){
+  dayRoll();   /* a report may never disagree with its own date stamp */
   const rows=reportRows();
   if(!rows.length)return toast('Nothing to export with those filters');
   let root=document.getElementById('printroot');
@@ -4520,8 +4681,17 @@ function recovState(it){
 }
 function recoveryHTML(){
   if(!RECOV.loaded){
-    /* redraw whichever screen asked for it, not just the desktop one */
-    if(!RECOV.loading)loadRecovery().then(()=>{ MOBILE?mobRender():renderDash(); });
+    /* ===== THIS RE-RENDER MUST ONLY HAPPEN IF SOMETHING WAS LEARNED =====
+       Signed out, LIVE is false, so loadRecovery cannot read anything and
+       deliberately leaves `loaded` false — then this called mobRender, which
+       called this, for ever. Nothing showed it until the phone keyboard opened:
+       that fires a resize, checkMode re-entered the mobile shell, and the tab
+       locked solid. Re-render only when the read actually produced a plan, and
+       do not even start one when there is nobody signed in to read for. */
+    if(!LIVE)
+      return '<div class="empty">Sign in to see the recovery plan.</div>';
+    if(!RECOV.loading)
+      loadRecovery().then(()=>{ if(RECOV.loaded){ MOBILE?mobRender():renderDash(); } });
     return '<div class="empty">Reading the plan…</div>'; }
   const all=RECOV.items;
   if(!all.length)
@@ -4708,7 +4878,8 @@ function legCards(leg){
       <div class="p">${esc(x.s)}</div>
       <div class="bar"><i style="width:${x.p}%;background:${x.c}"></i></div></div>`).join('');
   const bar=`<div class="ballbar legbar100">${rows.filter(x=>x.n).map(x=>
-      `<i data-lstate="${esc(x.k)}" style="width:${x.n/(total||1)*100}%;background:${x.c}"
+      `<i data-lstate="${esc(x.k)}" data-n="${x.n}" data-t="${esc(x.t)}" data-c="${x.c}"
+          style="width:${x.n/(total||1)*100}%;background:${x.c}"
           title="${esc(x.t)} — ${x.n}"><b>${x.n}</b></i>`).join('')}</div>`;
   const sum=rows.reduce((t,x)=>t+x.n,0), psum=rows.reduce((t,x)=>t+x.p,0);
   return `<div class="kpis">${tiles}</div>${bar}
@@ -4729,6 +4900,7 @@ function legDiscipline(leg){
     return `<div class="drow"><div class="dlab" title="${esc(x.d)}">${esc(x.d)}</div>
       <div class="dtrack"><div class="dbar" style="width:${x.n/max*100}%">${parts.map(p=>
         `<i data-d="${esc(x.d)}" data-lstate="${esc(p.st.k)}"
+            data-n="${p.v}" data-t="${esc(p.st.t)}" data-c="${p.st.c}"
             title="${esc(x.d)} — ${p.v} ${esc(p.st.t)}"
             style="flex:${p.v};background:${p.st.c}"></i>`).join('')}</div></div>
       <div class="dn">${x.n}</div><div class="dp">${x.n?Math.round(done/x.n*100):0}%</div></div>`;}).join('')}
@@ -4778,6 +4950,81 @@ function legDashHTML(leg){
       ${legTurnaround(leg)}</div>
     <div class="panel"><h3>By discipline</h3>${legDiscipline(leg)}</div></div>`;
 }
+/* ===== THE LOUPE ========================================================
+   A one-document slice of a stacked bar is about two pixels wide on a phone.
+   Tapping it is luck, and the tap that lands opens the wrong filter — which is
+   worse than no tap at all. So a press on any bar lifts its segments out into a
+   strip above the finger, each one wide enough to hit and labelled with its
+   state and count. Slide to move between them, lift to apply the same filter a
+   tap would have applied, slide off the strip to cancel. A quick tap still
+   behaves exactly as it did, so nothing anyone already knows is taken away. */
+let LOUPE=null;
+function loupeEl(){
+  if(LOUPE&&document.body.contains(LOUPE))return LOUPE;
+  LOUPE=document.createElement('div');
+  LOUPE.id='loupe'; LOUPE.setAttribute('aria-hidden','true');
+  document.body.appendChild(LOUPE);
+  return LOUPE;
+}
+function hideLoupe(){ if(LOUPE)LOUPE.classList.remove('on'); }
+function attachLoupe(root,go){
+  if(!MOBILE)return;
+  root.querySelectorAll('.dbar,.ballbar').forEach(bar=>{
+    const segs=[...bar.querySelectorAll('i[data-lstate]')].filter(x=>+(x.dataset.n||0)>0);
+    if(segs.length<2)return;                 /* one block is already easy to hit */
+    bar.style.touchAction='none';
+    let live=false, pick=-1, blocks=[];
+    const open=(y)=>{
+      const el=loupeEl();
+      /* proportional, but never below a thumb's width — that is the whole point */
+      el.innerHTML=`<div class="lptitle">${esc(segs[0].dataset.d||'All disciplines')}</div>
+        <div class="lprow">${segs.map((sg,i)=>
+          `<div class="lpseg" data-i="${i}" style="flex:${Math.max(1,+sg.dataset.n)}">
+             <i style="background:${sg.dataset.c||'#888'}"></i>
+             <b>${esc(sg.dataset.n)}</b><span>${esc(sg.dataset.t||'')}</span></div>`).join('')}</div>
+        <div class="lphint">Slide to choose · lift to filter</div>`;
+      el.classList.add('on');
+      const r=el.getBoundingClientRect();
+      el.style.top=Math.max(8,y-r.height-18)+'px';
+      blocks=[...el.querySelectorAll('.lpseg')];
+      live=true; pick=-1;
+    };
+    const at=(x)=>{
+      for(let i=0;i<blocks.length;i++){
+        const b=blocks[i].getBoundingClientRect();
+        if(x>=b.left&&x<=b.right)return i;
+      }
+      return -1;
+    };
+    const mark=(i)=>{
+      if(i===pick)return; pick=i;
+      blocks.forEach((b,j)=>b.classList.toggle('on',j===i));
+    };
+    bar.addEventListener('touchstart',e=>{
+      const t=e.touches[0]; if(!t)return;
+      open(bar.getBoundingClientRect().top);
+      /* start on whatever the finger is actually over in the ORIGINAL bar, so a
+         plain tap still picks the thing under the thumb */
+      let i=-1;
+      segs.forEach((sg,j)=>{const b=sg.getBoundingClientRect();
+        if(t.clientX>=b.left&&t.clientX<=b.right)i=j;});
+      mark(i>=0?i:at(t.clientX));
+    },{passive:true});
+    bar.addEventListener('touchmove',e=>{
+      if(!live)return;
+      const t=e.touches[0]; if(!t)return;
+      e.preventDefault();                    /* the page must not scroll under it */
+      mark(at(t.clientX));
+    },{passive:false});
+    const end=(apply)=>{
+      if(!live)return; live=false;
+      const i=pick; hideLoupe();
+      if(apply&&i>=0&&segs[i])go(segs[i].dataset.lstate,segs[i].dataset.d||'');
+    };
+    bar.addEventListener('touchend',()=>end(true));
+    bar.addEventListener('touchcancel',()=>end(false));
+  });
+}
 function wireLegDash(w,leg){
   /* On the phone there are no windows to open — the same click has to set the
      mobile register's own filters and switch to it, exactly as drillTo does. */
@@ -4796,6 +5043,7 @@ function wireLegDash(w,leg){
   w.body.querySelectorAll('[data-lstate]').forEach(el=>{
     el.style.cursor='pointer';
     el.onclick=()=>go(el.dataset.lstate, el.dataset.d||'');});
+  attachLoupe(w.body,go);
   w.body.querySelectorAll('.rctbl tr[data-go]').forEach(tr=>{
     tr.style.cursor='pointer';
     tr.onclick=()=>{ const r=AB.find(x=>x.id===+tr.dataset.go);
@@ -5810,7 +6058,7 @@ let DIRECTORY=[];
 async function loadDirectory(){
   const sel=document.getElementById('lname');
   try{
-    DIRECTORY=await fetch(SB_URL+'/rest/v1/lod_signin?order=seq.asc',
+    DIRECTORY=await fetchT(SB_URL+'/rest/v1/lod_signin?order=seq.asc',
       {headers:{apikey:SB_KEY,Authorization:'Bearer '+SB_KEY}}).then(r=>r.json());
     if(!Array.isArray(DIRECTORY)||!DIRECTORY.length)throw new Error('empty');
     sel.innerHTML='<option value="">Choose your name…</option>'+
@@ -5863,6 +6111,7 @@ async function doLogin(){
     try{localStorage.setItem('ab-session',JSON.stringify(
       {t:s.access_token,r:s.refresh_token,exp:Date.now()+(s.expires_in||3600)*1000}));
       const i=document.getElementById('lname').value; if(i!=='')localStorage.setItem('ab-who',i);}catch(e){}
+    btn.textContent='Loading the register…';
     await loadData();
     startApp();
   }catch(e){
@@ -5875,7 +6124,7 @@ async function resumeSession(){
   if(!s||!s.r)return false;
   try{
     const n=(s.exp&&s.exp>Date.now()+60000)?{access_token:s.t,refresh_token:s.r,expires_in:(s.exp-Date.now())/1000}
-      :await auth('token?grant_type=refresh_token',{refresh_token:s.r});
+      :await auth('token?grant_type=refresh_token',{refresh_token:s.r},NET_BOOT_MS);
     TOKEN=n.access_token;
     const me=await api('lod_members?user_id=eq.'+
       (n.user?n.user.id:(JSON.parse(atob(n.access_token.split('.')[1])).sub))+'&limit=1');
@@ -5914,16 +6163,18 @@ async function loadData(){
   try{ NOTIFS=await api('lod_notifs?order=id.desc&limit=100'); }catch(e){}
   NOTIF_MAX=NOTIFS.length?Math.max(...NOTIFS.map(n=>+n.id||0)):0;
   startLive();
-  await loadRevs();
-  await loadLegs();
-  await loadCommentCounts();
-  await loadPlanning();
+  /* THESE DO NOT DEPEND ON EACH OTHER. Run one after another they were eight
+     round trips in series — several seconds on a phone with the sign-in card
+     still on screen and the button disabled, which is most of what "frozen"
+     felt like. In parallel it is one round trip's worth of waiting, and one
+     slow table no longer holds up the other seven. */
+  await Promise.all([
+    loadRevs(), loadLegs(), loadCommentCounts(), loadPlanning(),
+    loadMembers(), loadSnaps(), loadAttention(),
+  ]);
   /* whatever the pre-sign-in render concluded about the recovery plan, it was
      working from an empty plan list — read it again now the real one is here */
   RECOV={loaded:false,items:[],loading:false};
-  await loadMembers();
-  await loadSnaps();
-  await loadAttention();
   touchSeen();
 }
 /* ================= staying up to date =================
@@ -6213,11 +6464,17 @@ function nextRev(docId,leg){
 }
 const OUTCOMES={
   HESCO:['','RNC','RWC'],                       // AWPT's review of HESCO's work
-  Maaden:['','Code A','Code B','Rejected']      // the Client's codes
+  /* The Client stamps A, C, R and I. The stored values keep their internal
+     names — the credit table and every past reconciliation depend on them —
+     but the picker must offer, and read back, Maaden's own four codes. */
+  Maaden:['','Code A','Code B','Rejected','Replied']
 };
+/* what an outcome is called in the picker, in the reviewer's own words */
+const outcomeLabel=(leg,v)=>!v?'— no reply yet —'
+  :((leg==='Maaden'||leg==='maaden')&&MAADEN_GRADE[v]?maadenLabel(v):v);
 const OUTCOME_HINT={
   HESCO:'RNC — AWPT reviewed with no comments; HESCO prepares the submittal to Maaden. RWC — returned to HESCO with comments.',
-  Maaden:'Code A approved · Code B approved with comments · Rejected. Deemed approval is applied automatically after 10 working days on IFI documents.'
+  Maaden:'A — accepted · C — proceed with exceptions to the next submission and revision · R — do not proceed, revise as noted and resubmit · I — issued for information. A is also applied automatically 10 working days after an IFI submission with no reply.'
 };
 function editHistRow(r,id){
   if(!canEdit())return toast('Your account cannot edit');
@@ -6234,7 +6491,7 @@ function editHistRow(r,id){
      <label class="fl">Outcome</label>
      <select class="f big" id="ehOut">
        ${OUTCOMES[c.leg].map(o=>`<option value="${esc(o)}"${o===c.status?' selected':''}>${
-         o?esc(o):'— no reply yet —'}</option>`).join('')}
+         esc(outcomeLabel(c.leg,o))}</option>`).join('')}
        ${c.status&&!OUTCOMES[c.leg].includes(c.status)
          ? `<option value="${esc(c.status)}" selected>${esc(c.status)}</option>`:''}
      </select>
@@ -6271,14 +6528,15 @@ function editHistRow(r,id){
     let st,hold;
     if(c.leg==='Maaden'){
       st=resp?(out||'Under review'):'Under review';
-      hold=['Code A','Code B','Deemed'].includes(st)?'Closed'
+      hold=['Code A','Code B','Deemed','Replied'].includes(st)?'Closed'
            :st==='Rejected'?'HESCO':'Maaden';
     } else {
       st=resp?(out||'RWC'):'Under AWPT review';
       hold=resp?'HESCO':'AWPT';
     }
     el.innerHTML=isLatest
-      ? `As the latest cycle, the document will read <b>${esc(st)}</b> with
+      ? `As the latest cycle, the document will read <b>${esc(
+          c.leg==='Maaden'?planCodeLabel(st):st)}</b> with
          <b>${esc(hold)}</b> holding it.`
       : 'An earlier cycle — the document keeps the status its latest cycle gives it.';
   };
@@ -6336,7 +6594,7 @@ function logCycle(r){
     <input class="f big" id="lgResp" type="date" value="">
     <label class="fl">Outcome</label>
     <select class="f big" id="lgOut">
-      ${OUTCOMES[leg].map(o=>`<option value="${esc(o)}">${o?esc(o):'— no reply yet —'}</option>`).join('')}
+      ${OUTCOMES[leg].map(o=>`<option value="${esc(o)}">${esc(outcomeLabel(leg,o))}</option>`).join('')}
     </select>
     <div class="hint" style="margin-top:5px">${OUTCOME_HINT[leg]}</div>
     <div class="hint" id="lgNote" style="margin-top:10px"></div>`;
@@ -6347,13 +6605,14 @@ function logCycle(r){
     const el=document.getElementById('lgNote'); if(!el)return;
     let holder,status;
     if(leg==='Maaden'){
-      holder=resp?(['Code A','Code B'].includes(out)?'Closed':'HESCO'):'Maaden';
+      holder=resp?(['Code A','Code B','Replied'].includes(out)?'Closed':'HESCO'):'Maaden';
       status=resp?(out||'Under review'):'Under review';
     } else {
       holder=resp?'HESCO':'AWPT';        // RNC or RWC, it goes back to HESCO
       status=resp?(out||'RWC'):'Under AWPT review';
     }
-    el.innerHTML=`The document will read <b>${esc(status)}</b> with
+    el.innerHTML=`The document will read <b>${esc(
+      leg==='Maaden'?planCodeLabel(status):status)}</b> with
       <b>${esc(holder)}</b> holding it, and the day count restarts.`+
       (leg==='HESCO'&&resp&&out==='RNC'
         ?' AWPT has cleared it — HESCO now prepares the submittal to Maaden.':'');
