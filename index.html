@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v114        2026-09-05
+     BUILD: v115        2026-09-05
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -1625,7 +1625,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-09-05 · v114';
+const BUILD='LOD 2026-09-05 · v115';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2823,6 +2823,16 @@ function wireComments(root,id,redraw){
           body:JSON.stringify({body:v,editedAt:nowTs()})});
         c.body=v; c.editedAt=nowTs(); redraw();},'primary']]);});
 }
+/* The submission history for one document, in its own window. The plan's
+   history button, the register and the notification list all come here, so a
+   document's cycles always open the same way. */
+function openHistory(r){
+  if(!r)return;
+  const w=[...WINS.values()].find(x=>x.kind==='hist')||
+    createWindow('hist','Submission history','',null,null,660,520);
+  w.rowId=r.id; paintCycles(w,r); focusWin(w.id);
+  return w;
+}
 async function openDiscussion(r){
   const w=[...WINS.values()].find(x=>x.kind==='disc')||
     createWindow('disc','Discussion','',null,null,560,520);
@@ -2831,8 +2841,12 @@ async function openDiscussion(r){
   focusWin(w.id);
   await loadComments(r.id);
   const draw=()=>{
-    w.body.innerHTML='<div class="dash">'+commentsHTML(r.id)+composerHTML(r.id)+'</div>';
+    w.body.innerHTML='<div class="dash">'+
+      '<div class="planbar" style="margin-bottom:11px">'+
+      '<button class="btn" id="dhist">Submission history</button></div>'+
+      commentsHTML(r.id)+composerHTML(r.id)+'</div>';
     wireComments(w.body,r.id,draw);
+    const hb=w.body.querySelector('#dhist'); if(hb)hb.onclick=()=>openHistory(r);
     const t=w.body.querySelector('#cnew'); if(t)t.focus();
   };
   draw();
@@ -3244,12 +3258,8 @@ function wirePlan(draw){
         delete PITEMS[p.id]; PLAN_CUR=null;
         await loadPlanning(); await draw(); toast('Plan deleted');
       },'danger']]);};
-  w.body.querySelectorAll('[data-hist]').forEach(b=>b.onclick=()=>{
-    const r=AB.find(x=>x.id===+b.dataset.hist);
-    if(!r)return;
-    const hw=[...WINS.values()].find(x=>x.kind==='hist')||
-      createWindow('hist','Submission history','',null,null,660,520);
-    hw.rowId=r.id; paintCycles(hw,r); focusWin(hw.id);});
+  w.body.querySelectorAll('[data-hist]').forEach(b=>b.onclick=()=>
+    openHistory(AB.find(x=>x.id===+b.dataset.hist)));
   w.body.querySelectorAll('.pa').forEach(inp=>inp.onchange=async()=>{
     const who=await resolveAssignee(inp.value);
     await api('lod_plan_items?id=eq.'+inp.dataset.i,{method:'PATCH',body:JSON.stringify({assigneeId:who})});
@@ -5392,14 +5402,25 @@ async function openNotifs(){
   if(LIVE){ try{ NOTIFS=await api('lod_notifs?order=id.desc&limit=100'); }catch(e){} }
   w.body.innerHTML=`<div class="dash"><div class="panel">${
     NOTIFS.length?NOTIFS.map(n=>`<div class="nrow${n.read==='Yes'?'':' unread'}"
-        ${n.docId?`data-go="${n.docId}"`:''}>
+        ${n.docId?`data-go="${n.docId}" data-nid="${n.id}"`:''}>
       <div style="flex:1;min-width:0">${notifTag(n.kind)}<b>${esc(n.title)}</b>
         <div class="hint">${esc(n.ref||'')}${n.ref?' · ':''}${esc(ago(n.ts))}</div>
         <div class="nb">${esc(n.body||'')}</div></div></div>`).join('')
     :'<div class="empty">Nothing needs your attention.</div>'}</div></div>`;
+  /* A notification is about something that HAPPENED to a document, so pressing
+     it opens that document's submissions. The two kinds that are about
+     something somebody SAID open the thread they were written in instead —
+     otherwise the message you were told about is nowhere on screen. Either
+     window can reach the other, so neither is a dead end. */
   w.body.querySelectorAll('[data-go]').forEach(el=>el.onclick=()=>{
     const r=AB.find(x=>x.id===+el.dataset.go);
-    if(r)openDiscussion(r); else toast('That document is no longer on the register');});
+    if(!r)return toast('That document is no longer on the register');
+    /* by the notification's OWN id: several notifications can concern the same
+       document, and matching on the document opened whichever came first — a
+       mention landed on the submissions instead of on the message. */
+    const n=NOTIFS.find(x=>String(x.id)===el.dataset.nid);
+    if(n&&(n.kind==='mention'||n.kind==='comment'))openDiscussion(r);
+    else openHistory(r);});
   if(LIVE&&NOTIFS.some(n=>n.read!=='Yes')){
     try{ await api('lod_notifs?toUser=eq.'+USER.id,{method:'PATCH',body:JSON.stringify({read:'Yes'})});
       NOTIFS.forEach(n=>n.read='Yes'); updateBell(); }catch(e){}
@@ -6705,9 +6726,13 @@ function logCycle(r){
 function paintCycles(w,r){
   w.el.querySelector('.wt').innerHTML=esc(r.docNumber||r.ref)+'<small>'+esc(r.title)+'</small>';
   w.body.innerHTML='<div class="dash"><div class="panel">'+
-    (canEdit()?'<div class="planbar" style="margin-bottom:11px"><button class="btn primary" id="hlog">Log a submission</button></div>':'')+
+    '<div class="planbar" style="margin-bottom:11px">'+
+    (canEdit()?'<button class="btn primary" id="hlog">Log a submission</button>':'')+
+    '<button class="btn" id="hdisc">Discussion'+(CCOUNT[r.id]?' ('+CCOUNT[r.id]+')':'')+'</button>'+
+    '</div>'+
     historyHTML(r)+'</div></div>';
   const lb=w.body.querySelector('#hlog'); if(lb)lb.onclick=()=>logCycle(r);
+  const db=w.body.querySelector('#hdisc'); if(db)db.onclick=()=>openDiscussion(r);
   if(canEdit())w.body.querySelectorAll('[data-hid]').forEach(el=>
     el.onclick=()=>editHistRow(r,+el.dataset.hid));
 }
@@ -6722,6 +6747,11 @@ function refreshHistory(){
 function historyHTML(r){
   const all=(HIST[r.id]||[]);
   if(!all.length)return '<div class="empty">No submission history recorded.</div>';
+  /* The Client stamps A, C, R and I — "Code B" is not a word Maaden uses, and
+     printing it next to the picker that now offers C invites the reader to
+     think they are two different things. The stored value is untouched. */
+  const outLabel=x=>(x.leg==='Maaden'&&MAADEN_GRADE[x.status])
+    ? maadenLabel(x.status) : (x.status||'');
   const block=(rows,label,who)=>{
     if(!rows.length)return '';
     /* Only cycles that could have happened. Without the >=0 and <=today guards
@@ -6744,7 +6774,7 @@ function historyHTML(r){
           <div class="hmid">
             <div class="hdates"><b>${esc(x.submitted)||'—'}</b><span>→</span>
               <b>${x.responded?esc(x.responded):'<span class="hint">awaiting</span>'}</b></div>
-            ${x.status?`<span class="pstate st-due">${esc(x.status)}${
+            ${x.status?`<span class="pstate st-due">${esc(outLabel(x))}${
               isInferred(x)?' ~':''}${isHandSet(x)?' ✓':''}</span>`:''}
           </div>
           <div class="hdays ${out?'out':''}">${x.days!=null?x.days+'d'
@@ -6758,7 +6788,7 @@ function historyHTML(r){
         <td class="mono">${esc(x.rev)}</td>
         <td class="mono">${esc(x.submitted)||'—'}</td>
         <td class="mono">${esc(x.responded)||'<span class="hint">awaiting</span>'}</td>
-        <td>${x.status?esc(x.status)+(isInferred(x)?
+        <td>${x.status?esc(outLabel(x))+(isInferred(x)?
           ' <span class="hint" title="Worked out from the resubmission pattern, not recorded">~ inferred</span>':'')
           +(isHandSet(x)?
           ' <span class="lockmark" title="Set by hand — the RNC/RWC rule will not change it. Clear the code to hand it back to the rule.">✓ yours</span>':'')
@@ -6812,13 +6842,24 @@ document.getElementById('b-redo').onclick=redo;
 document.getElementById('b-bell').onclick=openNotifs;
 document.getElementById('mbell').onclick=()=>{
   msgBox('Notifications','',NOTIFS.length?NOTIFS.map(n=>
-    `<div class="nrow${n.read==='Yes'?'':' unread'}" ${n.docId?`data-mgo="${n.docId}"`:''}>
+    `<div class="nrow${n.read==='Yes'?'':' unread'}" ${
+       n.docId?`data-mgo="${n.docId}" data-nid="${n.id}"`:''}>
       <div style="flex:1;min-width:0">${notifTag(n.kind)}<b>${esc(n.title)}</b>
         <div class="hint">${esc(n.ref||'')}${n.ref?' · ':''}${esc(ago(n.ts))}</div>
         <div class="nb">${esc(n.body||'')}</div></div></div>`).join('')
     :'<div class="empty">Nothing needs your attention.</div>',[['Close',null,'primary']]);
   document.querySelectorAll('[data-mgo]').forEach(el=>el.onclick=()=>{
-    closeMsg(); MOB.stack=[]; mobGo('one',+el.dataset.mgo);});
+    const id=+el.dataset.mgo;
+    const n=NOTIFS.find(x=>String(x.id)===el.dataset.nid);
+    closeMsg(); MOB.stack=[]; mobGo('one',id);
+    /* the phone has one screen per document, so "open the submissions" means
+       putting the submission history under the reader's thumb rather than
+       making them scroll past the details to find it */
+    if(!(n&&(n.kind==='mention'||n.kind==='comment')))
+      setTimeout(()=>{
+        const h=[...document.querySelectorAll('#mbody .spec h4')]
+          .find(x=>x.textContent.trim().indexOf('Submission history')===0);
+        if(h&&h.scrollIntoView)h.scrollIntoView({block:'start'});},60);});
   if(LIVE&&USER&&NOTIFS.some(n=>n.read!=='Yes')){
     api('lod_notifs?toUser=eq.'+USER.id,{method:'PATCH',body:JSON.stringify({read:'Yes'})})
       .then(()=>{NOTIFS.forEach(n=>n.read='Yes');updateBell();}).catch(()=>{});
