@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v116        2026-09-05
+     BUILD: v117        2026-09-07
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -139,6 +139,26 @@ table.g td.frzlast,table.g thead th.frzlast{border-right:2px solid var(--accent)
 .ctxmenu .kb{color:var(--muted);font-size:11px}
 .ctxmenu .hd{padding:5px 9px 7px;font-size:11px;color:var(--muted);
   text-transform:uppercase;letter-spacing:.06em}
+/* the value picker: a scrolling list of what is actually in the column */
+.ctxmenu.colfilter{min-width:260px;max-width:320px;padding-bottom:6px}
+.colfilter .cfq{width:calc(100% - 12px);margin:0 6px 6px;padding:5px 8px;font-size:12px}
+.colfilter .cflist{max-height:264px;overflow:auto;border-top:1px solid var(--ring);
+  border-bottom:1px solid var(--ring);margin:0 0 6px}
+.colfilter .cfrow{display:flex;align-items:center;gap:8px;padding:4px 9px;
+  font-size:12px;cursor:pointer}
+.colfilter .cfrow:hover{background:var(--accent-soft)}
+.colfilter .cfrow span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.colfilter .cfrow i{color:var(--muted);font-style:normal;font-size:11px;
+  font-variant-numeric:tabular-nums}
+.colfilter .cfall{border-bottom:1px solid var(--ring);padding-bottom:6px}
+.colfilter .cfall b{flex:1}
+.colfilter .cfnone{padding:10px 9px;font-size:12px;color:var(--muted)}
+.colfilter .cfbtns{display:flex;gap:6px;padding:0 6px}
+.colfilter .cfbtns .btn{flex:1;justify-content:center}
+/* a filtered column says so in its own heading */
+thead th .fmark{margin-left:5px;color:var(--accent);font-size:10px}
+
 td.sel{background:var(--sel)}
 td.cur{outline:2px solid var(--selb);outline-offset:-2px;z-index:2}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
@@ -1632,7 +1652,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-09-05 · v116';
+const BUILD='LOD 2026-09-07 · v117';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2032,7 +2052,7 @@ function openRegister(leg){
   const w=createWindow(m[0],m[1],m[2]);
   if(!w.grid)
     w.grid={win:w, leg:(leg||'all'), sort:{k:'sn',dir:1}, q:'', fd:'', fs:'', fx:'', fh:'',
-            fage:null, fageL:'', fset:null, sel:null, cur:{r:0,c:0}, editing:null};
+            fage:null, fageL:'', fset:null, colf:{}, sel:null, cur:{r:0,c:0}, editing:null};
   GRID=w.grid;
   renderGrid(w.grid);
   return w;
@@ -2084,6 +2104,12 @@ function gridRows(){
        column holds. The panel works out which documents it means and hands the
        register the list, so the two can never drift apart. */
     if(GRID.fset&&!GRID.fset.ids.has(r.id))return false;
+    if(GRID.colf){
+      for(const k in GRID.colf){
+        const c=COLBY[k]; if(!c)continue;
+        if(!GRID.colf[k].has(colValue(r,c)))return false;
+      }
+    }
     return true;
   });
   const {k,dir}=GRID.sort, c=COLBY[k];
@@ -2116,6 +2142,9 @@ function openColMenu(G,k,x,y){
   const m=document.createElement('div');
   m.className='ctxmenu';
   m.innerHTML=`<div class="hd">${esc(col.t)}</div>`+
+    item('Filter…', colFiltered(G,k)?'on':'')+
+    item('Clear filter on this column','',null,!colFiltered(G,k))+
+    item('Clear all column filters','',null,!anyColFilter(G))+'<hr>'+
     item('Sort A to Z','▲')+item('Sort Z to A','▼')+'<hr>'+
     item('Move left','←',null,i===0)+
     item('Move right','→',null,i===cs.length-1)+
@@ -2132,7 +2161,10 @@ function openColMenu(G,k,x,y){
   _ctx=m;
   m.querySelectorAll('button').forEach(b=>b.onclick=()=>{
     const a=b.dataset.a; closeColMenu(); GRID=G; LEG=G.leg;
-    if(a==='Sort A to Z'){ G.sort={k,dir:1}; renderGrid(G); }
+    if(a==='Filter…'){ openColFilter(G,k,x,y); }
+    else if(a==='Clear filter on this column'){ delete G.colf[k]; renderGrid(G); }
+    else if(a==='Clear all column filters'){ G.colf={}; renderGrid(G); }
+    else if(a==='Sort A to Z'){ G.sort={k,dir:1}; renderGrid(G); }
     else if(a==='Sort Z to A'){ G.sort={k,dir:-1}; renderGrid(G); }
     else if(a==='Move left') moveCol(k,-1);
     else if(a==='Move right') moveCol(k,1);
@@ -2145,6 +2177,61 @@ function openColMenu(G,k,x,y){
     else if(a==='Hide this column') hideCol(k);
     else if(a==='Choose columns…') openCols();
   });
+}
+/* The value picker itself. Tick what you want to see; the search box narrows
+   the list, and "Select all" follows whatever the search has narrowed it to,
+   which is how somebody filters to twenty documents out of a hundred without
+   ticking twenty boxes. */
+function openColFilter(G,k,x,y){
+  closeColMenu();
+  const col=COLBY[k]; if(!col)return;
+  const vals=colValues(G,k);
+  if(!vals.length)return toast('Nothing to filter in this column');
+  const cur=G.colf[k]; let sel=new Set(cur?[...cur]:vals.map(v=>v.v));
+  let q='';
+  const m=document.createElement('div');
+  m.className='ctxmenu colfilter';
+  const shown=()=>vals.filter(v=>!q||v.label.toLowerCase().includes(q));
+  const draw=()=>{
+    const list=shown();
+    const allOn=list.length&&list.every(v=>sel.has(v.v));
+    m.innerHTML=`<div class="hd">Filter · ${esc(col.t)}</div>
+      <input class="f cfq" placeholder="Search values" value="${esc(q)}">
+      <label class="cfrow cfall"><input type="checkbox" ${allOn?'checked':''}>
+        <b>${allOn?'Clear':'Select'} all${q?' shown':''}</b><i>${list.length}</i></label>
+      <div class="cflist">${list.map((v,i)=>
+        `<label class="cfrow" data-i="${i}"><input type="checkbox" ${sel.has(v.v)?'checked':''}>
+          <span>${esc(v.label)}</span><i>${v.n}</i></label>`).join('')
+        ||'<div class="cfnone">No value matches that search.</div>'}</div>
+      <div class="cfbtns">
+        <button class="btn" data-x="clear">Clear filter</button>
+        <button class="btn primary" data-x="ok">Apply</button></div>`;
+    const qi=m.querySelector('.cfq');
+    qi.oninput=()=>{ const p=qi.selectionStart; q=qi.value.toLowerCase().trim(); draw();
+      const n=m.querySelector('.cfq'); n.focus(); n.setSelectionRange(p,p); };
+    m.querySelector('.cfall input').onchange=e=>{
+      const on=e.target.checked;
+      shown().forEach(v=>{ if(on)sel.add(v.v); else sel.delete(v.v); });
+      draw(); };
+    m.querySelectorAll('.cflist .cfrow').forEach(el=>{
+      el.querySelector('input').onchange=e=>{
+        const v=shown()[+el.dataset.i]; if(!v)return;
+        if(e.target.checked)sel.add(v.v); else sel.delete(v.v); };});
+    m.querySelector('[data-x="clear"]').onclick=()=>{
+      delete G.colf[k]; closeColMenu(); GRID=G; LEG=G.leg; renderGrid(G); };
+    m.querySelector('[data-x="ok"]').onclick=()=>{
+      GRID=G; LEG=G.leg;
+      if(!sel.size)return toast('Tick at least one value');
+      /* everything ticked is not a filter — it is the absence of one */
+      if(sel.size===vals.length) delete G.colf[k]; else G.colf[k]=new Set(sel);
+      closeColMenu(); renderGrid(G); };
+  };
+  document.body.appendChild(m); draw();
+  const r=m.getBoundingClientRect();
+  m.style.left=Math.min(x, innerWidth-r.width-8)+'px';
+  m.style.top=Math.min(y, innerHeight-r.height-8)+'px';
+  _ctx=m;
+  const qi=m.querySelector('.cfq'); if(qi)qi.focus();
 }
 function statusPill(v,label,title){
   const k=v||'Not issued';
@@ -2201,6 +2288,37 @@ function legState(r,leg){
   if(!c.responded)return OUT;
   return c.status||'Replied';
 }
+/* ============================================================
+   Per-column filters, the way a spreadsheet does them: right-click a heading,
+   tick the values you want. The MATCH is on the stored value so it is exact;
+   the LIST shows the same words the column itself shows, so "Code B" is
+   offered as "C — Proceed with exceptions" and not as two different things.
+   ============================================================ */
+const colValue=(r,c)=>String((c.calc?c.calc(r):(r[c.k]??''))).trim();
+function colLabel(r,c){
+  const v=colValue(r,c);
+  if(!v)return '(blank)';
+  if(c.k==='mOut')return maadenLabel(v);
+  if(c.k==='status')return statusText(v)||v;
+  return v;
+}
+/* every value in a column, counted, over the rows the OTHER filters allow --
+   the same rule a spreadsheet uses, so a column's own list does not shrink to
+   whatever it is already filtered to */
+function colValues(G,k){
+  const c=COLBY[k]; if(!c)return [];
+  const keep=G.colf&&G.colf[k]; if(G.colf)delete G.colf[k];
+  let rows;
+  try{ const was=GRID; GRID=G; rows=gridRows(); GRID=was; }
+  finally{ if(keep&&G.colf)G.colf[k]=keep; }
+  const m=new Map();
+  rows.forEach(r=>{ const v=colValue(r,c);
+    const e=m.get(v)||{v,label:colLabel(r,c),n:0}; e.n++; m.set(v,e); });
+  return [...m.values()].sort((a,b)=>
+    (a.v===''?1:0)-(b.v===''?1:0) || a.label.localeCompare(b.label,undefined,{numeric:true}));
+}
+const colFiltered=(G,k)=>!!(G&&G.colf&&G.colf[k]);
+const anyColFilter=G=>!!(G&&G.colf&&Object.keys(G.colf).length);
 function cellText(r,c){
   const v=c.calc?c.calc(r):(r[c.k]??'');
   if(c.pill){
@@ -2277,8 +2395,11 @@ function renderGrid(g){
   const frzStyle=i=>i<fz?`left:${frozenLeft(cs,i)}px;`:'';
   const head=`<thead><tr><th class="corner"><input type="checkbox" id="gall"${allOn?' checked':''}></th>${cs.map((c,i)=>
       `<th data-c="${i}" data-k="${c.k}" draggable="${canEdit()}" class="${frzCls(i).trim()}"
-        style="${frzStyle(i)}width:${colW(c)}px;min-width:${colW(c)}px" title="Right-click for column options">${
-        esc(c.t)}${GRID.sort.k===c.k?(GRID.sort.dir>0?' ▲':' ▼'):''}<span class="cr" data-rz="${c.k}"></span></th>`).join('')}</tr></thead>`;
+        style="${frzStyle(i)}width:${colW(c)}px;min-width:${colW(c)}px" title="${
+          colFiltered(GRID,c.k)?'Filtered — right-click to change it':'Right-click for column options'}">${
+        esc(c.t)}${GRID.sort.k===c.k?(GRID.sort.dir>0?' ▲':' ▼'):''}${
+        colFiltered(GRID,c.k)?'<span class="fmark" title="This column is filtered">▼</span>':''
+        }<span class="cr" data-rz="${c.k}"></span></th>`).join('')}</tr></thead>`;
   const body=`<tbody>${rows.map((r,ri)=>
     `<tr data-r="${ri}" data-id="${r.id}" class="${r.ref?'':'dim'}" style="height:${PREFS.rowh}px">
       <th data-rh="${ri}"><input type="checkbox" class="rowchk" data-k="${r.id}"${
@@ -4226,6 +4347,13 @@ function filterLabel(){
                         :{fd:GRID.fd,fs:GRID.fs,fx:GRID.fx,q:GRID.q,fh:GRID.fh,fset:GRID.fset};
   if(LEG!=='all')bits.push(LEG==='hesco'?'HESCO → AWPT':'AWPT → Maaden');
   if(S.fset)bits.push(S.fset.label);
+  /* a printed page must say what was filtered out of it */
+  if(!MOBILE&&GRID&&GRID.colf)
+    Object.keys(GRID.colf).forEach(k=>{
+      const c=COLBY[k]; if(!c)return;
+      const n=GRID.colf[k].size;
+      bits.push(c.t+': '+(n===1?[...GRID.colf[k]][0]||'(blank)':n+' values'));
+    });
   if(S.fd)bits.push(S.fd);
   /* say the state in the leg's own words — "Code Awaiting reply" was nonsense */
   if(S.fs)bits.push(LEG==='maaden'?maadenLabel(S.fs):statusText(S.fs));
@@ -4352,7 +4480,7 @@ function drillTo(f){
     mobRender(); return;
   }
   if(!GRID||!WINS.has(GRID.win.id))openRegister();
-  Object.assign(GRID,{q:'',fd:'',fs:'',fx:'',fh:'',fage:null,fageL:'',fset:null,...f});
+  Object.assign(GRID,{q:'',fd:'',fs:'',fx:'',fh:'',fage:null,fageL:'',fset:null,colf:{},...f});
   renderGrid(); focusWin(GRID.win.id);
   toast('Showing '+([f.fh,f.fd,f.fs,f.fageL].filter(Boolean).join(' · ')||'everything'));
 }
