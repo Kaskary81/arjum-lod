@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v120        2026-09-08
+     BUILD: v121        2026-09-08
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -1653,7 +1653,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-09-08 · v120';
+const BUILD='LOD 2026-09-08 · v121';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2272,16 +2272,25 @@ function legState(r,leg){
      figure, and the dashboard would still have claimed the states covered 100%
      while quietly counting one fewer. */
   /* A DEEMED DOCUMENT IS NO LONGER "WITH MAADEN". The 10-working-day rule flips
-     the document's own status to Deemed, but this column reads the leg's last
-     cycle, which has no reply on it and never will — so the Client register went
-     on printing "Under Client review" against 92 days. The document's verdict is
-     carried onto the leg here, and only where the leg has no answer of its own:
-     a real code that arrives later still wins, because it is read first. */
-  const OUT=(leg==='Maaden'||leg==='maaden')
-    ? (r.status==='Deemed'?'Deemed':'Under Client review') : 'Awaiting reply';
+     the document's own status to Deemed, but this column reads the leg, not the
+     document — so the Client register went on printing "Under Client review"
+     against 92 days.
+
+     THE WAITING WORD IS A STORED VALUE, NOT A COMPUTED ONE. lod_maaden_submittals
+     holds outcome = 'Under Client review' on every unanswered row, so an earlier
+     attempt at this that only handled the computed path changed nothing on the
+     real register: the stored word was returned two lines above it. Both spellings
+     of "sent, no answer yet" are named here, and only they are overridden — a real
+     grade is returned untouched, and so is a row that has a reply date on it. */
+  const M=(leg==='Maaden'||leg==='maaden');
+  const WAIT=M?'Under Client review':'Awaiting reply';
   const t=legRow(r,leg);
+  const answered=t ? !!(t.replied||'').trim()
+                   : !!((lastCycle(r,leg)||{}).responded||'').trim();
+  const OUT=(M&&r.status==='Deemed'&&!answered)?'Deemed':WAIT;
   if(t){
-    if(t.outcome==='Awaiting reply')return OUT;   /* the rollup writes this word */
+    if(t.outcome===WAIT||t.outcome==='Awaiting reply'||t.outcome==='Under review')
+      return OUT;                                 /* the rollup writes these words */
     if(t.outcome)return t.outcome;
     /* A reply date with no verdict is a MISSING CODE, not an unsent document.
        Falling through to 'Not submitted' here told the opposite of the truth
