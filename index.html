@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v118        2026-09-08
+     BUILD: v120        2026-09-08
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -1414,6 +1414,7 @@ tr.pgone td{background:rgba(214,69,69,.07)}
       <button data-a="csv">Export to CSV</button>
       <button data-a="import">Import from Excel…</button>
       <hr>
+      <button data-a="deem">Apply the 10-day rule now</button>
       <button data-a="bin">Deleted documents…</button>
       <button data-a="activity">Activity log</button>
       <button data-a="users">People</button>
@@ -1494,7 +1495,7 @@ const COLOR={'Code A':'#0f9d58','Deemed':'#4bb07a','Code B':'#6fc38a','Under rev
    written in AWPT's terms, so on a leg register the Status column shows THAT
    leg's own outcome instead — the Maaden register reads Maaden's codes. */
 const LEGSTATUSES={hesco:['RNC','RWC','Replied','Awaiting reply','On hold','Not submitted'],
-  maaden:['Code A','Code B','Rejected','Replied','Under Client review','On hold','Not submitted']};
+  maaden:['Code A','Deemed','Code B','Rejected','Replied','Under Client review','On hold','Not submitted']};
 /* A held deliverable is waiting on a prerequisite, not late work. The recovery
    plan marks it purple (FF7030A0 "On Hold"); the register uses the same colour,
    the state takes precedence over the leg's own, and the clock stops. */
@@ -1531,7 +1532,7 @@ const planCodeRank=v=>{const i=PLAN_CODE_ORDER.indexOf(v||'Not Submitted');
   return i<0?PLAN_CODE_ORDER.length:i;};
 /* the short form, for a narrow pill or a phone card */
 const statusCode=v=>MAADEN_GRADE[v]?MAADEN_GRADE[v].g:(v||'');
-const LCOLOR={'Code A':'#0f9d58','Code B':'#6fc38a','Under Client review':'#f0b429',
+const LCOLOR={'Code A':'#0f9d58','Deemed':'#4bb07a','Code B':'#6fc38a','Under Client review':'#f0b429',
   'Replied':'#6b7f92','Awaiting reply':'#f0b429','Not submitted':'#cbd2d8',
   'On hold':'#7030a0'};
 const HCOLOR={'HESCO':'#d64545','AWPT':'#f0b429',"Maaden":'#2a78d6','Closed':'#0f9d58'};
@@ -1652,7 +1653,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-09-08 · v118';
+const BUILD='LOD 2026-09-08 · v120';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2270,7 +2271,14 @@ function legState(r,leg){
      leg — which has no such card — dropped the document out of every Maaden
      figure, and the dashboard would still have claimed the states covered 100%
      while quietly counting one fewer. */
-  const OUT=(leg==='Maaden'||leg==='maaden')?'Under Client review':'Awaiting reply';
+  /* A DEEMED DOCUMENT IS NO LONGER "WITH MAADEN". The 10-working-day rule flips
+     the document's own status to Deemed, but this column reads the leg's last
+     cycle, which has no reply on it and never will — so the Client register went
+     on printing "Under Client review" against 92 days. The document's verdict is
+     carried onto the leg here, and only where the leg has no answer of its own:
+     a real code that arrives later still wins, because it is read first. */
+  const OUT=(leg==='Maaden'||leg==='maaden')
+    ? (r.status==='Deemed'?'Deemed':'Under Client review') : 'Awaiting reply';
   const t=legRow(r,leg);
   if(t){
     if(t.outcome==='Awaiting reply')return OUT;   /* the rollup writes this word */
@@ -2327,7 +2335,9 @@ function cellText(r,c){
     if(c.k==='hOut'&&isInferred(lastCycle(r,'HESCO')))
       return statusPill(v, v+' ~',
         'Worked out from the resubmission pattern, not recorded — this is an AWPT-only document, so no Client submission can evidence a clearance');
-    if(c.k==='mOut')return statusPill(v,maadenLabel(v));
+    if(c.k==='mOut')return statusPill(v,maadenLabel(v), v==='Deemed'
+      ? 'No Client reply within 10 working days — deemed acknowledged under the agreed procedure'
+      : '');
     /* the Everything register mixes both vocabularies — each verdict is shown
        in the words of whoever gave it */
     if(c.k==='status'&&MAADEN_GRADE[v])
@@ -4320,6 +4330,26 @@ async function takeSnapshot(){
     await loadSnaps(); refresh(); toast('Snapshot recorded for today');
   }catch(e){ toast('Could not record the snapshot'); }
 }
+/* THE 10-DAY RULE, ON DEMAND.
+   It already runs on its own — the database sweeps every night at 02:00 UTC,
+   and applyDeemed() shows the result on screen the moment a document crosses
+   the tenth working day, without waiting for that sweep. This is the button for
+   the third case: somebody has just logged a submission, or corrected a date,
+   and wants the register written now rather than tomorrow morning. Same
+   function the nightly job calls, so the two can never disagree, and every
+   document it changes is logged to the activity trail under the rule's name. */
+async function runDeemSweep(){
+  if(!canEdit())return toast('Your account cannot apply the rule');
+  toast('Checking the 10 working day window…');
+  try{
+    const n=await api('rpc/lod_deem_sweep',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:'{}'});
+    const c=(typeof n==='number')?n:(Array.isArray(n)?n.length:0);
+    if(c>0){ await loadData(); refresh(); }
+    toast(c===0 ? 'Nothing has passed 10 working days without a reply'
+       : c+' document'+(c===1?'':'s')+' deemed acknowledged');
+  }catch(e){ toast('Could not apply the rule — '+(e&&e.message?'the database refused it':'no connection')); }
+}
 function trendHTML(){
   if(SNAPS.length<2)
     return `<div class="empty"><b>${SNAPS.length?'One snapshot so far':'No snapshots yet'}</b>
@@ -5079,6 +5109,7 @@ const LEGSTATE=leg=>leg==='hesco'
      {k:'Code B',   t:'C — Proceed with exceptions',s:'to the next submission and revision',c:'#6fc38a'},
      {k:'Rejected', t:'R — Do not proceed',         s:'revise as noted and resubmit',      c:'#d64545'},
      {k:'Replied',  t:'I — For information',        s:'issued for information',            c:'#6b7f92'},
+     {k:'Deemed',   t:'Deemed acknowledged',        s:'no reply within 10 working days',   c:'#4bb07a'},
      {k:'Under Client review',t:'With Maaden now',  s:'sent, awaiting the grade',          c:'#f0b429'},
      {k:'On hold',            t:'On hold',          s:'held pending prerequisites',        c:HOLDCOLOR},
      {k:'Not submitted',      t:'Not submitted',    s:'the Client has not seen it',        c:'#cbd2d8'}];
@@ -5111,7 +5142,8 @@ function legCourt(r,leg){
   if(isHold(r))return 'On hold';
   const L=leg==='hesco'?'HESCO':'Maaden', c=lastCycle(r,L);
   if(!c)return leg==='hesco'?'HESCO':(r.holder||'');   /* not yet on this leg */
-  if(!(c.responded||''))return leg==='hesco'?'AWPT':'Maaden';   /* out for review */
+  if(!(c.responded||''))return leg==='hesco'?'AWPT'
+    :(r.status==='Deemed'?'Closed':'Maaden');   /* out for review — unless deemed */
   const st=c.status||'';
   if(leg==='hesco')
     return st==='RWC' ? 'HESCO'                    /* comments to resolve */
@@ -7115,7 +7147,8 @@ menu.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{
   const a=b.dataset.a;
   if(a==='cols')openCols(); else if(a==='pdf')exportPDF(); else if(a==='xlsx')exportXLSX(); else if(a==='csv')exportCSV();
   else if(a==='import')importExcel(); else if(a==='bin')openBin();
-  else if(a==='lod_activity')openActivity();
+  else if(a==='deem')runDeemSweep();
+  else if(a==='activity'||a==='lod_activity')openActivity();
   else if(a==='users')openUsers(); else if(a==='alerts')alertsBox();
   else if(a==='arrange')arrangeWins();
   else if(a==='theme')toggleTheme(); else if(a==='mobile')setMobile(true,true);
