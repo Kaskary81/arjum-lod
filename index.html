@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v117        2026-09-07
+     BUILD: v118        2026-09-08
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -1478,7 +1478,7 @@ const STATUSES=['Code A','Deemed','Code B','Under review','Rejected',
   'RNC','RWC','Under AWPT review','Not issued'];
 const CREDIT={'Code A':100,'Deemed':100,'Code B':85,'Under review':50,
   'Rejected':0,'RNC':0,'RWC':0,'Under AWPT review':0,'Not issued':0};
-const STATUS_LONG={'Code A':'Approved — Code A','Deemed':'Deemed approved (>10 wd)',
+const STATUS_LONG={'Code A':'Approved — Code A','Deemed':'Deemed acknowledged (>10 wd)',
   'Code B':'Approved with comments — Code B','Under review':'Issued, under review',
   'Rejected':'Rejected','RNC':'AWPT reviewed — no comments',
   'RWC':'AWPT reviewed — with comments',
@@ -1509,7 +1509,10 @@ const MAADEN_GRADE={
   'Code B':   {g:'C', t:'Proceed with exceptions',d:'proceed with exceptions to next submission and revision'},
   'Rejected': {g:'R', t:'Do not proceed',         d:'revise as noted and resubmit'},
   'Replied':  {g:'I', t:'For information',        d:'issued to the Client for information'},
-  'Deemed':   {g:'A', t:'Deemed accepted',        d:'no reply within 10 working days'}};
+  /* Acknowledged, not accepted. A deemed status rests on silence, not on a
+     verdict the Client gave — the letters that quote it have to say the weaker
+     thing, and the register is where that wording is set. */
+  'Deemed':   {g:'A', t:'Deemed acknowledged',    d:'no reply within 10 working days'}};
 const maadenLabel=v=>{const m=MAADEN_GRADE[v]; return m?m.g+' — '+m.t:(v||'');};
 /* A document's own status is whatever the last reviewer said, so when that
    reviewer was the Client it must be shown in the Client's words: Maaden stamps
@@ -1652,7 +1655,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-09-07 · v117';
+const BUILD='LOD 2026-09-08 · v118';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -4167,7 +4170,7 @@ function exportPlanPDF(planId){
 
 /* ================= review clock =================
    The Client's review window is counted in working days, Sunday to Thursday.
-   An IFI document with no response inside 10 working days is deemed approved;
+   An IFI document with no response inside 10 working days is deemed acknowledged;
    IFR carries a 3 working-day target. Both are computed live from the date the
    document was issued, so the escalation list writes itself. */
 const WD_START=0, WD_END=4;                 // Sun..Thu are working days
@@ -4186,7 +4189,7 @@ function reviewClock(r){
   /* THE CLOCK NEEDS A SUBMISSION TO RUN FROM. One document's rollup said 'Under
      review' with the ball in Maaden's court while both the Client leg table and
      the history showed it had never been sent to them — and on that alone it
-     would have appeared in the client-facing escalation PDF as deemed approved.
+     would have appeared in the client-facing escalation PDF as deemed acknowledged.
      A deeming claim against the Client has to rest on a submission we can show. */
   if(!hasCycle(r,'Maaden'))return null;
   const from=r.issuedDate||r.heldSince;
@@ -4198,7 +4201,7 @@ function reviewClock(r){
   return {used,limit,over,from,
     k: over>0 ? (r.reviewClass==='IFI'?'deemed':'overdue') : (over>=-1?'due':'ok'),
     label: over>0 ? (r.reviewClass==='IFI'
-              ? 'Deemed approved — '+over+' wd past the 10-day window'
+              ? 'Deemed acknowledged — '+over+' wd past the 10-day window'
               : over+' wd past the '+limit+'-day window')
             : (limit-used)+' wd left'};
 }
@@ -4218,7 +4221,7 @@ function clockHTML(){
   const past=rows.filter(x=>x.c.over>0), deemed=past.filter(x=>x.c.k==='deemed');
   return `<div class="chart" data-chart="clock">
     <div class="pgnum" style="margin-bottom:10px"><b>${past.length}</b>
-      <span>past their review window${deemed.length?' · '+deemed.length+' IFI now deemed approved':''}</span></div>
+      <span>past their review window${deemed.length?' · '+deemed.length+' IFI now deemed acknowledged':''}</span></div>
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr><th>Document</th><th>Class</th><th>Issued</th>
         <th style="text-align:right">Working days</th><th>Position</th></tr></thead><tbody>
@@ -4232,7 +4235,7 @@ function clockHTML(){
     </tbody></table>
     ${rows.length>25?`<div class="hint" style="margin-top:7px">Showing 25 of ${rows.length}.</div>`:''}
     <div class="hint" style="margin-top:8px">Working days counted Sunday to Thursday, from the day after issue.
-      IFI is deemed approved after 10; IFR carries a 3-day target.</div>${warn}</div>`;
+      IFI is deemed acknowledged after 10; IFR carries a 3-day target.</div>${warn}</div>`;
 }
 function wireClock(root){
   root.querySelectorAll('[data-go]').forEach(el=>el.onclick=()=>{
@@ -4263,7 +4266,7 @@ function exportEscalation(){
         <td class="c-actualSub" style="text-align:center">${c.used} of ${c.limit}${
           c.k==='deemed'?' — deemed':''}</td></tr>`).join('')}</tbody></table>
     <div class="rfoot">Working days counted Sunday to Thursday. IFI documents with no response within
-      10 working days are deemed approved under the agreed procedure. · ${stamp}${
+      10 working days are deemed acknowledged under the agreed procedure. · ${stamp}${
       USER?' · issued by '+esc(USER.name):''}</div>`;
   preparePrint(root);
   document.body.classList.add('printing');
