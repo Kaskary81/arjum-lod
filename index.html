@@ -1478,7 +1478,7 @@ const STATUSES=['Code A','Deemed','Code B','Under review','Rejected',
   'RNC','RWC','Under AWPT review','Not issued'];
 const CREDIT={'Code A':100,'Deemed':100,'Code B':85,'Under review':50,
   'Rejected':0,'RNC':0,'RWC':0,'Under AWPT review':0,'Not issued':0};
-const STATUS_LONG={'Code A':'Approved — Code A','Deemed':'Deemed approved (>10 wd)',
+const STATUS_LONG={'Code A':'Approved — Code A','Deemed':'Deemed acknowledged — no reply in 10 working days',
   'Code B':'Approved with comments — Code B','Under review':'Issued, under review',
   'Rejected':'Rejected','RNC':'AWPT reviewed — no comments',
   'RWC':'AWPT reviewed — with comments',
@@ -1509,7 +1509,7 @@ const MAADEN_GRADE={
   'Code B':   {g:'C', t:'Proceed with exceptions',d:'proceed with exceptions to next submission and revision'},
   'Rejected': {g:'R', t:'Do not proceed',         d:'revise as noted and resubmit'},
   'Replied':  {g:'I', t:'For information',        d:'issued to the Client for information'},
-  'Deemed':   {g:'A', t:'Deemed accepted',        d:'no reply within 10 working days'}};
+  'Deemed':   {g:'A', t:'Deemed acknowledged',    d:'no reply within 10 working days'}};
 const maadenLabel=v=>{const m=MAADEN_GRADE[v]; return m?m.g+' — '+m.t:(v||'');};
 /* A document's own status is whatever the last reviewer said, so when that
    reviewer was the Client it must be shown in the Client's words: Maaden stamps
@@ -1652,7 +1652,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-09-07 · v117';
+const BUILD='LOD 2026-09-08 · v118';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1746,7 +1746,7 @@ async function apiUpdate(id,patch){
     let cur=null; try{ cur=(await api('lod_docs?id=eq.'+id+'&limit=1'))[0]; }catch(e){}
     throw new StaleRow(cur);
   }
-  if(Array.isArray(res)&&res[0]&&row)Object.assign(row,res[0]);
+  if(Array.isArray(res)&&res[0]&&row){ Object.assign(row,res[0]); applyDeemed(); }
 }
 async function apiInsert(row){ const r=await api('lod_docs',{method:'POST',
   headers:{Prefer:'return=representation'},body:JSON.stringify(row)}); return r[0]; }
@@ -4202,6 +4202,40 @@ function reviewClock(r){
               : over+' wd past the '+limit+'-day window')
             : (limit-used)+' wd left'};
 }
+/* THE DEEMING RULE, APPLIED — not merely displayed.
+   An IFI document with no Client reply inside 10 working days is deemed
+   acknowledged under the agreed procedure. reviewClock() has always SHOWN this
+   on the clock page, but the document's own status stayed "Under review", so
+   the register, the cards, the credit and every report still counted it as
+   sitting with the Client. This closes that gap.
+
+   IT IS COMPUTED AT LOAD, NEVER WRITTEN TO THE DATABASE. lod_derive() runs on
+   history triggers, and nothing happens in the history on the day a document
+   crosses the tenth working day — a stored value would simply go stale until
+   somebody touched the row. The stored status is kept in _status0 so the
+   overlay can be lifted and recomputed on every refresh, and so a real reply
+   arriving later takes over with nothing to undo.
+
+   The same guard as the clock: no deeming without a Client submission on
+   record. A held document's clock is stopped, so it is left alone. */
+function applyDeemed(){
+  for(const r of AB){                       /* lift the previous overlay first */
+    if(r._status0!==undefined){ r.status=r._status0; delete r._status0; }
+    r.deemedAuto=false;
+  }
+  let n=0;
+  for(const r of AB){
+    if(r.reviewClass!=='IFI')      continue; /* IFR is never deemed — it needs a real code */
+    if(r.status!=='Under review')  continue;
+    if(isHold(r))                  continue;
+    if(!hasCycle(r,'Maaden'))      continue;
+    const from=r.issuedDate||r.heldSince; if(!from)continue;
+    const used=workingDays(from,today);
+    if(used==null||used<=10)       continue;
+    r._status0=r.status; r.status='Deemed'; r.deemedAuto=true; n++;
+  }
+  return n;
+}
 function clockHTML(){
   const rows=AB.map(r=>({r,c:reviewClock(r)})).filter(x=>x.c)
     .sort((a,b)=>b.c.over-a.c.over);
@@ -6430,6 +6464,7 @@ async function loadData(){
     loadRevs(), loadLegs(), loadCommentCounts(), loadPlanning(),
     loadMembers(), loadSnaps(), loadAttention(),
   ]);
+  applyDeemed();          /* needs HIST and the leg tables — hence here, not at AB= */
   /* whatever the pre-sign-in render concluded about the recovery plan, it was
      working from an empty plan list — read it again now the real one is here */
   RECOV={loaded:false,items:[],loading:false};
@@ -6477,6 +6512,7 @@ async function syncNow(opts){
     }
     await loadLegs();
     await loadRevs();
+    applyDeemed();
     /* a fresh notification that this person has not read is what earns a sound */
     const fresh=NOTIFS.filter(n=>+n.id>before&&n.read!=='Yes');
     refresh();
