@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v121        2026-09-08
+     BUILD: v122        2026-09-08
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -169,6 +169,9 @@ tr.dim td{color:var(--muted)}
 select.cellin{padding:1px 3px}
 
 .pill{display:inline-block;padding:0 8px;border-radius:20px;font-size:11px;font-weight:600;line-height:17px}
+/* a receiving date the rule produced, not one the Client gave */
+.deemd{color:#d64545;font-weight:600}
+#printroot .deemd,table.rtbl .deemd{color:#b00000;font-weight:700}
 .s-A,.s-B,.s-I{background:rgba(12,163,12,.15);color:var(--goodtext)}
 .s-B{background:rgba(12,163,12,.10)}
 .s-C{background:rgba(236,131,90,.20);color:#b8501f}
@@ -1479,7 +1482,7 @@ const STATUSES=['Code A','Deemed','Code B','Under review','Rejected',
   'RNC','RWC','Under AWPT review','Not issued'];
 const CREDIT={'Code A':100,'Deemed':100,'Code B':85,'Under review':50,
   'Rejected':0,'RNC':0,'RWC':0,'Under AWPT review':0,'Not issued':0};
-const STATUS_LONG={'Code A':'Approved — Code A','Deemed':'Deemed acknowledged — no reply in 10 working days',
+const STATUS_LONG={'Code A':'Approved — Code A','Deemed':'For information — no reply in 10 working days',
   'Code B':'Approved with comments — Code B','Under review':'Issued, under review',
   'Rejected':'Rejected','RNC':'AWPT reviewed — no comments',
   'RWC':'AWPT reviewed — with comments',
@@ -1495,7 +1498,7 @@ const COLOR={'Code A':'#0f9d58','Deemed':'#4bb07a','Code B':'#6fc38a','Under rev
    written in AWPT's terms, so on a leg register the Status column shows THAT
    leg's own outcome instead — the Maaden register reads Maaden's codes. */
 const LEGSTATUSES={hesco:['RNC','RWC','Replied','Awaiting reply','On hold','Not submitted'],
-  maaden:['Code A','Deemed','Code B','Rejected','Replied','Under Client review','On hold','Not submitted']};
+  maaden:['Code A','Code B','Rejected','Replied','Under Client review','On hold','Not submitted']};
 /* A held deliverable is waiting on a prerequisite, not late work. The recovery
    plan marks it purple (FF7030A0 "On Hold"); the register uses the same colour,
    the state takes precedence over the leg's own, and the clock stops. */
@@ -1510,7 +1513,7 @@ const MAADEN_GRADE={
   'Code B':   {g:'C', t:'Proceed with exceptions',d:'proceed with exceptions to next submission and revision'},
   'Rejected': {g:'R', t:'Do not proceed',         d:'revise as noted and resubmit'},
   'Replied':  {g:'I', t:'For information',        d:'issued to the Client for information'},
-  'Deemed':   {g:'A', t:'Deemed acknowledged',    d:'no reply within 10 working days'}};
+  'Deemed':   {g:'I', t:'For information',        d:'no reply within 10 working days — taken as issued for information'}};
 const maadenLabel=v=>{const m=MAADEN_GRADE[v]; return m?m.g+' — '+m.t:(v||'');};
 /* A document's own status is whatever the last reviewer said, so when that
    reviewer was the Client it must be shown in the Client's words: Maaden stamps
@@ -1532,7 +1535,7 @@ const planCodeRank=v=>{const i=PLAN_CODE_ORDER.indexOf(v||'Not Submitted');
   return i<0?PLAN_CODE_ORDER.length:i;};
 /* the short form, for a narrow pill or a phone card */
 const statusCode=v=>MAADEN_GRADE[v]?MAADEN_GRADE[v].g:(v||'');
-const LCOLOR={'Code A':'#0f9d58','Deemed':'#4bb07a','Code B':'#6fc38a','Under Client review':'#f0b429',
+const LCOLOR={'Code A':'#0f9d58','Code B':'#6fc38a','Under Client review':'#f0b429',
   'Replied':'#6b7f92','Awaiting reply':'#f0b429','Not submitted':'#cbd2d8',
   'On hold':'#7030a0'};
 const HCOLOR={'HESCO':'#d64545','AWPT':'#f0b429',"Maaden":'#2a78d6','Closed':'#0f9d58'};
@@ -1653,7 +1656,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-09-08 · v121';
+const BUILD='LOD 2026-09-08 · v122';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2287,7 +2290,12 @@ function legState(r,leg){
   const t=legRow(r,leg);
   const answered=t ? !!(t.replied||'').trim()
                    : !!((lastCycle(r,leg)||{}).responded||'').trim();
-  const OUT=(M&&r.status==='Deemed'&&!answered)?'Deemed':WAIT;
+  /* THERE IS NO SEPARATE "DEEMED" COLUMN VALUE. A document the Client never
+     answered inside the window stands exactly where a document they stamped I
+     stands — issued for information, no receiving date on it — so it is counted
+     and filtered as one of those rather than as a category of its own. What
+     marks it out is the receiving date, printed in red at ten working days. */
+  const OUT=(M&&r.status==='Deemed'&&!answered)?'Replied':WAIT;
   if(t){
     if(t.outcome===WAIT||t.outcome==='Awaiting reply'||t.outcome==='Under review')
       return OUT;                                 /* the rollup writes these words */
@@ -2344,8 +2352,8 @@ function cellText(r,c){
     if(c.k==='hOut'&&isInferred(lastCycle(r,'HESCO')))
       return statusPill(v, v+' ~',
         'Worked out from the resubmission pattern, not recorded — this is an AWPT-only document, so no Client submission can evidence a clearance');
-    if(c.k==='mOut')return statusPill(v,maadenLabel(v), v==='Deemed'
-      ? 'No Client reply within 10 working days — deemed acknowledged under the agreed procedure'
+    if(c.k==='mOut')return statusPill(v,maadenLabel(v), (v==='Replied'&&deemedDate(r))
+      ? 'No Client reply within 10 working days — taken as issued for information under the agreed procedure'
       : '');
     /* the Everything register mixes both vocabularies — each verdict is shown
        in the words of whoever gave it */
@@ -2353,6 +2361,14 @@ function cellText(r,c){
       return statusPill(v, maadenLabel(v), 'Maaden code '+MAADEN_GRADE[v].g+
         ' — '+MAADEN_GRADE[v].d);
     return statusPill(v);
+  }
+  /* the reply column: a real date in the ordinary way, otherwise the date the
+     ten working days ran out, in red so nobody reads it as something received */
+  if(c.k==='mBack'&&!v){
+    const d=deemedDate(r);
+    if(d)return '<span class="deemd" title="No reply received. Ten working days from '+
+      esc(legSent(r,'Maaden'))+' — taken as issued for information under the agreed procedure">'+
+      esc(d)+'</span>';
   }
   if(c.k==='title'&&CCOUNT[r.id])
     return esc(v)+'<span class="cbadge" title="'+CCOUNT[r.id]+' comment(s)">'+CCOUNT[r.id]+'</span>';
@@ -4186,7 +4202,8 @@ function exportPlanPDF(planId){
 
 /* ================= review clock =================
    The Client's review window is counted in working days, Sunday to Thursday.
-   An IFI document with no response inside 10 working days is deemed acknowledged;
+   An IFI document with no response inside 10 working days is taken as issued
+   for information;
    IFR carries a 3 working-day target. Both are computed live from the date the
    document was issued, so the escalation list writes itself. */
 const WD_START=0, WD_END=4;                 // Sun..Thu are working days
@@ -4200,12 +4217,40 @@ function workingDays(from,to){
   return n;
 }
 const WINDOW={'IFI':10,'IFR':3,'AWPT-only':3};
+/* THE DATE THE RULE PRODUCES. Counted the same way the clock counts — Sunday to
+   Thursday, starting the day after the submission — so the tenth working day is
+   a date that can be quoted in a letter, not a figure somebody has to work out.
+   It is never stored: nothing was received, and writing it into the reply column
+   would turn a deemed date into a claimed one. It is printed in red instead. */
+function addWorkingDays(from,n){
+  if(!from)return '';
+  const d=new Date(from); if(isNaN(d))return '';
+  let left=n;
+  while(left>0){ d.setDate(d.getDate()+1);
+    const w=d.getDay(); if(w>=WD_START&&w<=WD_END)left--; }
+  return isoDay(d);
+}
+/* the deemed receiving date for a Client submission that was never answered —
+   '' whenever a real date exists, or the window has not run out */
+function deemedDate(r){
+  if(!r||isHold(r))return '';
+  const t=legRow(r,'Maaden'), c=lastCycle(r,'Maaden');
+  if((t&&(t.replied||'').trim())||(c&&(c.responded||'').trim()))return '';
+  /* ONLY WHERE THE DOCUMENT IS ACTUALLY TAKEN AS ISSUED FOR INFORMATION. A
+     submission still inside its window, or an IFR one the Client has yet to
+     grade, is genuinely waiting — printing a receiving date against it would
+     invent a reply nobody is entitled to claim. */
+  if(legState(r,'Maaden')!=='Replied')return '';
+  const sent=legSent(r,'Maaden'); if(!sent)return '';
+  const d=addWorkingDays(sent,WINDOW['IFI']||10);
+  return (d&&d<=today)?d:'';
+}
 function reviewClock(r){
   if(r.status!=='Under review')return null;
   /* THE CLOCK NEEDS A SUBMISSION TO RUN FROM. One document's rollup said 'Under
      review' with the ball in Maaden's court while both the Client leg table and
      the history showed it had never been sent to them — and on that alone it
-     would have appeared in the client-facing escalation PDF as deemed acknowledged.
+     would have appeared in the client-facing escalation PDF as taken for information.
      A deeming claim against the Client has to rest on a submission we can show. */
   if(!hasCycle(r,'Maaden'))return null;
   const from=r.issuedDate||r.heldSince;
@@ -4217,7 +4262,7 @@ function reviewClock(r){
   return {used,limit,over,from,
     k: over>0 ? (r.reviewClass==='IFI'?'deemed':'overdue') : (over>=-1?'due':'ok'),
     label: over>0 ? (r.reviewClass==='IFI'
-              ? 'Deemed acknowledged — '+over+' wd past the 10-day window'
+              ? 'Taken as for information — '+over+' wd past the 10-day window'
               : over+' wd past the '+limit+'-day window')
             : (limit-used)+' wd left'};
 }
@@ -4271,7 +4316,7 @@ function clockHTML(){
   const past=rows.filter(x=>x.c.over>0), deemed=past.filter(x=>x.c.k==='deemed');
   return `<div class="chart" data-chart="clock">
     <div class="pgnum" style="margin-bottom:10px"><b>${past.length}</b>
-      <span>past their review window${deemed.length?' · '+deemed.length+' IFI now deemed acknowledged':''}</span></div>
+      <span>past their review window${deemed.length?' · '+deemed.length+' IFI now taken as for information':''}</span></div>
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr><th>Document</th><th>Class</th><th>Issued</th>
         <th style="text-align:right">Working days</th><th>Position</th></tr></thead><tbody>
@@ -4285,7 +4330,7 @@ function clockHTML(){
     </tbody></table>
     ${rows.length>25?`<div class="hint" style="margin-top:7px">Showing 25 of ${rows.length}.</div>`:''}
     <div class="hint" style="margin-top:8px">Working days counted Sunday to Thursday, from the day after issue.
-      IFI is deemed acknowledged after 10; IFR carries a 3-day target.</div>${warn}</div>`;
+      IFI is taken as issued for information after 10; IFR carries a 3-day target.</div>${warn}</div>`;
 }
 function wireClock(root){
   root.querySelectorAll('[data-go]').forEach(el=>el.onclick=()=>{
@@ -4316,7 +4361,7 @@ function exportEscalation(){
         <td class="c-actualSub" style="text-align:center">${c.used} of ${c.limit}${
           c.k==='deemed'?' — deemed':''}</td></tr>`).join('')}</tbody></table>
     <div class="rfoot">Working days counted Sunday to Thursday. IFI documents with no response within
-      10 working days are deemed acknowledged under the agreed procedure. · ${stamp}${
+      10 working days are taken as issued for information under the agreed procedure. · ${stamp}${
       USER?' · issued by '+esc(USER.name):''}</div>`;
   preparePrint(root);
   document.body.classList.add('printing');
@@ -4356,7 +4401,7 @@ async function runDeemSweep(){
     const c=(typeof n==='number')?n:(Array.isArray(n)?n.length:0);
     if(c>0){ await loadData(); refresh(); }
     toast(c===0 ? 'Nothing has passed 10 working days without a reply'
-       : c+' document'+(c===1?'':'s')+' deemed acknowledged');
+       : c+' document'+(c===1?'':'s')+' taken as for information');
   }catch(e){ toast('Could not apply the rule — '+(e&&e.message?'the database refused it':'no connection')); }
 }
 function trendHTML(){
@@ -5118,7 +5163,6 @@ const LEGSTATE=leg=>leg==='hesco'
      {k:'Code B',   t:'C — Proceed with exceptions',s:'to the next submission and revision',c:'#6fc38a'},
      {k:'Rejected', t:'R — Do not proceed',         s:'revise as noted and resubmit',      c:'#d64545'},
      {k:'Replied',  t:'I — For information',        s:'issued for information',            c:'#6b7f92'},
-     {k:'Deemed',   t:'Deemed acknowledged',        s:'no reply within 10 working days',   c:'#4bb07a'},
      {k:'Under Client review',t:'With Maaden now',  s:'sent, awaiting the grade',          c:'#f0b429'},
      {k:'On hold',            t:'On hold',          s:'held pending prerequisites',        c:HOLDCOLOR},
      {k:'Not submitted',      t:'Not submitted',    s:'the Client has not seen it',        c:'#cbd2d8'}];
@@ -5151,8 +5195,7 @@ function legCourt(r,leg){
   if(isHold(r))return 'On hold';
   const L=leg==='hesco'?'HESCO':'Maaden', c=lastCycle(r,L);
   if(!c)return leg==='hesco'?'HESCO':(r.holder||'');   /* not yet on this leg */
-  if(!(c.responded||''))return leg==='hesco'?'AWPT'
-    :(r.status==='Deemed'?'Closed':'Maaden');   /* out for review — unless deemed */
+  if(!(c.responded||''))return leg==='hesco'?'AWPT':'Maaden';   /* out for review */
   const st=c.status||'';
   if(leg==='hesco')
     return st==='RWC' ? 'HESCO'                    /* comments to resolve */
