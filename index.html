@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v122        2026-09-08
+     BUILD: v123        2026-09-13
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -1656,7 +1656,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-09-08 · v122';
+const BUILD='LOD 2026-09-13 · v123';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2560,6 +2560,13 @@ function wireGrid(g){
   /* cell selection */
   let dragging=false;
   tbl.addEventListener('pointerdown',e=>{
+    /* THE CLICK THAT OPENS A DROP-DOWN IS NOT A CELL SELECTION. An open editor
+       lives inside its own cell, so pressing it reached this handler, which
+       calls wrap.focus() at the end — that pulled focus off the <select>, its
+       blur handler committed and removed it, and the native list never got to
+       open. From the outside it looked like a drop-down with nothing in it.
+       Anything inside the editor is the editor's own business. */
+    if(e.target.closest('.cellin'))return;
     const td=e.target.closest('td[data-c]'); if(!td)return;
     GRID=G; LEG=G.leg;
     const r=+td.dataset.r,c=+td.dataset.c;
@@ -2569,10 +2576,12 @@ function wireGrid(g){
     wrap.focus();
   });
   tbl.addEventListener('pointerover',e=>{
-    if(!dragging)return; const td=e.target.closest('td[data-c]'); if(!td)return;
+    if(!dragging||e.target.closest('.cellin'))return;
+    const td=e.target.closest('td[data-c]'); if(!td)return;
     GRID=G; G.sel={...G.sel,r2:+td.dataset.r,c2:+td.dataset.c};paintSel();});
   document.addEventListener('pointerup',()=>{dragging=false;},{once:false});
   tbl.addEventListener('dblclick',e=>{
+    if(e.target.closest('.cellin'))return;   /* already editing this cell */
     const td=e.target.closest('td[data-c]'); if(!td)return;
     GRID=G; LEG=G.leg; beginEdit(+td.dataset.r,+td.dataset.c);});
   wrap.tabIndex=0;
