@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v123        2026-09-13
+     BUILD: v125        2026-09-28
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -1656,7 +1656,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-09-13 · v123';
+const BUILD='LOD 2026-09-28 · v125';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1780,36 +1780,71 @@ async function applyOp(op,dir){
   const v=dir<0?op.from:op.to;
   if(op.t==='set'){
     const r=AB.find(x=>x.id===op.id); if(!r)return;
-    r[op.k]=v; await apiUpdate(op.id,{[op.k]:v});
+    /* WRITE FIRST, THEN THE SCREEN. Setting the value before the write meant a
+       refused write left the register showing something the database does not
+       hold, with nothing said. */
+    await apiUpdate(op.id,{[op.k]:v});
+    r[op.k]=v;
   }else if(op.t==='add'){
-    if(dir<0){ AB=AB.filter(x=>x.id!==op.id); await apiDelete(op.id); }
-    else { const row=await apiInsert(op.row); AB.push(row); op.id=row.id; }
+    /* UNDOING AN ADD USED TO DESTROY THE DOCUMENT. apiDelete is a real delete —
+       no bin, no restore — and the op carried the blank template it was created
+       from, so redo brought back an empty row. Keep what was typed, and put it
+       in the bin like every other deletion. */
+    if(dir<0){ const cur=AB.find(x=>x.id===op.id); if(cur)op.row={...cur};
+               await apiBin(op.id); AB=AB.filter(x=>x.id!==op.id); }
+    else { await apiUnbin(op.id);
+           let row=null; try{ const d=await api('lod_docs?id=eq.'+op.id+'&limit=1');
+             if(d&&d[0]&&d[0].id===op.id)row=d[0]; }catch(e){}
+           AB.push(row||op.row); }
   }else if(op.t==='del'){
-    if(dir<0){ await apiUnbin(op.id); AB.push(op.row); }
-    else { AB=AB.filter(x=>x.id!==op.id); await apiBin(op.id); }
+    if(dir<0){ await apiUnbin(op.id);
+               let row=null; try{ const d=await api('lod_docs?id=eq.'+op.id+'&limit=1');
+                 if(d&&d[0]&&d[0].id===op.id)row=d[0]; }catch(e){}
+               AB.push(row||op.row); }
+    else { await apiBin(op.id); AB=AB.filter(x=>x.id!==op.id); }
   }
+}
+/* A REFUSED UNDO MUST NOT TAKE THE UNDO STACK WITH IT. _replaying was cleared
+   on the line after the loop, so a throw skipped it for good — txPush then
+   returned early on every later edit and nothing was ever recorded as undoable
+   again, silently, with the button simply staying grey. */
+async function replayTx(t,dir){
+  _replaying=true;
+  try{
+    if(dir<0){ for(let i=t.ops.length-1;i>=0;i--) await applyOp(t.ops[i],-1); }
+    else     { for(const op of t.ops) await applyOp(op,1); }
+    return true;
+  }catch(e){
+    console.error(e);
+    toast(e instanceof StaleRow
+      ? 'Could not '+(dir<0?'undo':'redo')+' — that document has changed since'
+      : 'Could not '+(dir<0?'undo':'redo')+' — check your connection');
+    return false;
+  }finally{ _replaying=false; updateUndoBtns(); refresh(); }
 }
 async function undo(){
   if(!UNDO.length)return toast('Nothing to undo');
-  const t=UNDO.pop(); _replaying=true;
-  for(let i=t.ops.length-1;i>=0;i--) await applyOp(t.ops[i],-1);
-  _replaying=false; REDO.push(t); updateUndoBtns(); refresh(); toast('Undid '+t.label);
+  const t=UNDO.pop();
+  if(await replayTx(t,-1)){ REDO.push(t); updateUndoBtns(); toast('Undid '+t.label); }
+  else { UNDO.push(t); updateUndoBtns(); }      /* nothing happened — put it back */
 }
 async function redo(){
   if(!REDO.length)return toast('Nothing to redo');
-  const t=REDO.pop(); _replaying=true;
-  for(const op of t.ops) await applyOp(op,1);
-  _replaying=false; UNDO.push(t); updateUndoBtns(); refresh(); toast('Redid '+t.label);
+  const t=REDO.pop();
+  if(await replayTx(t,1)){ UNDO.push(t); updateUndoBtns(); toast('Redid '+t.label); }
+  else { REDO.push(t); updateUndoBtns(); }
 }
 function updateUndoBtns(){
   const u=document.getElementById('b-undo'),r=document.getElementById('b-redo');
   if(u)u.disabled=!UNDO.length||!canEdit(); if(r)r.disabled=!REDO.length||!canEdit();
 }
+/* resolves TRUE when the value reached the database, FALSE when it did not.
+   It used to resolve undefined either way, so paste counted refusals as
+   successes and told the user it had saved rows it had not. */
 async function setCell(row,k,val,silent){
   const before=row[k]??'';
-  if(String(before)===String(val))return;
+  if(String(before)===String(val))return true;
   row[k]=val;
-  txPush({t:'set',id:row.id,k,from:before,to:val});
   try{ await apiUpdate(row.id,{[k]:val}); await logAct('edit',row,k,before,val); }
   catch(e){
     row[k]=before;
@@ -1824,9 +1859,13 @@ async function setCell(row,k,val,silent){
          you typed <b>${esc(val||'(blank)')}</b>.<br><br>
          Their version is on screen now. Make your change again if it still applies.`,
         [['OK',null,'primary']]);
-    } else toast('Not saved — check your connection');
-    console.error(e); refresh(); return; }
+    } else if(!silent) toast('Not saved — check your connection');
+    console.error(e); refresh(); return false; }
+  /* recorded only once it has landed — an undo stack carrying writes that never
+     happened will replay them on top of a database that refused them */
+  txPush({t:'set',id:row.id,k,from:before,to:val});
   if(!silent){ await loadRevsFor(row.id); refresh(); }
+  return true;
 }
 
 /* ---------------- column prefs ---------------- */
@@ -2691,17 +2730,56 @@ async function pasteIntoSel(txt){
   const cs=visCols(), {r1,c1,r2,c2}=GRID.sel||{r1:0,c1:0,r2:0,c2:0};
   const ra=Math.min(r1,r2), ca=Math.min(c1,c2);
   txBegin('paste');
-  let n=0,skipped=0;
+  let n=0,skipped=0,failed=0; const rejected=[];
   for(let i=0;i<data.length;i++){
     const row=GRID.rows[ra+i]; if(!row)break;
     for(let j=0;j<data[i].length;j++){
       const col=cs[ca+j]; if(!col)break;
       if(col.ro){skipped++;continue;}
-      await setCell(row,col.k,data[i][j].trim(),true); n++;
+      const raw=data[i][j].trim();
+      /* THE CELL EDITOR VALIDATES AND THE CLIPBOARD DID NOT. A date column is
+         plain text in the database with no constraint, so "31 Feb 2026" pasted
+         straight through and every day count computed from it afterwards. */
+      const v=pasteValue(col,raw);
+      if(v===null){ rejected.push((row.ref||row.docNumber||'row '+(ra+i+1))+' · '+col.t+' · "'+raw+'"');
+                    failed++; continue; }
+      if(await setCell(row,col.k,v,true))n++; else failed++;
     }
   }
   txEnd(); renderGrid();
-  toast(n+' cell(s) pasted'+(skipped?', '+skipped+' calculated cell(s) skipped':''));
+  if(failed) msgBox('Part of that paste was not saved','',
+    `<b>${n}</b> cell(s) were written. <b>${failed}</b> were not, and still show what
+     they held before — nothing was lost.` +
+    (rejected.length?`<br><br>Not a value the column accepts:<br>${
+      rejected.slice(0,12).map(x=>'· '+esc(x)).join('<br>')}${
+      rejected.length>12?'<br>· and '+(rejected.length-12)+' more':''}`:'') +
+    (failed>rejected.length?'<br><br>The rest were refused by the server — try them again.':''),
+    [['OK',null,'primary']]);
+  else toast(n+' cell(s) pasted'+(skipped?', '+skipped+' calculated cell(s) skipped':''));
+}
+/* what the clipboard offers, in the form the column stores — or null if the
+   column cannot take it. Excel hands dates over in the sheet's own format, so
+   the common British and ISO spellings are accepted and normalised. */
+function pasteValue(col,raw){
+  if(raw==='')return '';
+  if(col.date){
+    let m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+    if(!m){ const d=/^(\d{1,2})[\/\-. ](\d{1,2})[\/\-. ](\d{2,4})$/.exec(raw);
+      if(d){ let y=+d[3]; if(y<100)y+=2000;
+             m=[null,String(y),String(+d[2]).padStart(2,'0'),String(+d[1]).padStart(2,'0')]; } }
+    if(!m)return null;
+    const y=+m[1],mo=+m[2],dd=+m[3];
+    if(mo<1||mo>12||dd<1||dd>31)return null;
+    const t=new Date(Date.UTC(y,mo-1,dd));           /* rejects 31 February */
+    if(t.getUTCMonth()!==mo-1||t.getUTCDate()!==dd)return null;
+    return m[1]+'-'+m[2]+'-'+m[3];
+  }
+  if(col.opts){
+    const list=col.opts();
+    const hit=list.find(o=>String(o).toLowerCase()===raw.toLowerCase());
+    return hit===undefined?null:hit;
+  }
+  return raw;
 }
 async function clearSel(){
   if(!canEdit())return toast(LIVE?'Your account cannot edit':'Read-only snapshot');
@@ -2710,13 +2788,16 @@ async function clearSel(){
   for(const {row,col} of cells) await setCell(row,col.k,'',true);
   txEnd(); renderGrid(); toast(cells.length+' cell(s) cleared');
 }
+/* one past the highest in use, NOT the row count — after any deletion those
+   two differ and the new document was born sharing a serial with an existing one */
+const nextSn=()=>String(Math.max(0,...AB.map(r=>+r.sn||0))+1);
 async function addRow(){
   if(!canEdit())return toast(LIVE?'Your account cannot edit':'Read-only snapshot');
   /* 'Not Submitted' is not one of STATUSES — 'Not issued' is, and is what the
      other 24 unissued documents carry. The literal only ever existed as a
      display fallback for a blank, so a new row was born with a status the
      pills, the code grouping and the filters did not recognise. */
-  const base={sn:String(AB.length+1),ref:'',title:'',
+  const base={sn:nextSn(),ref:'',title:'',
     discipline:'',reviewClass:'',status:'Not issued'};
   const row=await apiInsert(base);
   AB.push(row); txPush({t:'add',id:row.id,row:base}); updateUndoBtns();
@@ -2728,13 +2809,20 @@ async function deleteSelected(){
   if(!ids.length)return toast('Select the rows to delete first');
   msgBox('Delete '+ids.length+' document(s)?','',
     'They come off the register but are not erased — their revision history is kept, '+
-    'and an administrator can restore them at any time from Deleted documents.',
+    'and an administrator can restore them at any time from Deleted documents. '+
+    'Any recovery-plan commitment is removed with them, and is not restored.',
     [['Cancel',null,''],['Delete',async()=>{
       txBegin('delete '+ids.length+' row(s)');
       for(const id of ids){
         const row=AB.find(r=>r.id===id); if(!row)continue;
         txPush({t:'del',id,row:{...row}});
         AB=AB.filter(r=>r.id!==id); await apiBin(id); await logAct('delete',row);
+        /* take its recovery-plan commitments with it, or they keep counting
+           against whoever they were assigned to */
+        try{ await api('lod_plan_items?docId=eq.'+id,{method:'DELETE'});
+             Object.keys(PITEMS).forEach(k=>{
+               PITEMS[k]=(PITEMS[k]||[]).filter(it=>it.docId!==id); });
+        }catch(e){ console.error(e); }
       }
       txEnd(); refresh();
       toast(ids.length+' document(s) moved to the bin — undo, or restore from the menu');
@@ -3212,7 +3300,13 @@ function itemState(it,plan){
   return {k:'nodate',label:'No target date',cls:'st-none'};
 }
 function planProgress(planId){
-  const items=PITEMS[planId]||[];
+  /* THE ROW STAYS, THE FIGURE DOES NOT. A document in the bin is still drawn on
+     the week — marked, so nobody tidies away a commitment by accident — but it
+     was also still in the denominator and still counted overdue against whoever
+     it was assigned to, for a document nobody can open. */
+  const all=PITEMS[planId]||[];
+  const items=(AB&&AB.length)?all.filter(it=>AB.some(r=>r.id===it.docId)):all;
+  const binned=all.length-items.length;
   const plan=PLANS.find(p=>p.id===planId);
   const st=items.map(it=>itemState(it,plan));
   const done=st.filter(x=>x.k==='done'||x.k==='late').length;
@@ -3221,7 +3315,7 @@ function planProgress(planId){
     late:st.filter(x=>x.k==='late').length,
     overdue:st.filter(x=>x.k==='overdue').length,
     open:st.filter(x=>x.k==='due'||x.k==='nodate'||x.k==='pending').length,
-    pct:items.length?Math.round(done/items.length*100):0,
+    pct:items.length?Math.round(done/items.length*100):0, binned,
     started:planStarted(plan),phase:planPhase(plan),
     kind:plan?plan.kind:'submission',verb:planVerb(plan)};
 }
@@ -5571,7 +5665,7 @@ function importExcel(){
             if(!row){
               /* 'Not Submitted' is not one of STATUSES — it would have been an
                  unrecognised value on every imported row */
-              const base={sn:String(AB.length+1),docNumber:no,title:'',
+              const base={sn:nextSn(),docNumber:no,title:'',
                 discipline:'',reviewClass:'',status:'Not issued'};
               row=await apiInsert(base); AB.push(row); txPush({t:'add',id:row.id,row:base}); add++;
             } else upd++;
@@ -6386,8 +6480,14 @@ async function mobBin(){
     [['Close',null,'primary']]);
   document.querySelectorAll('[data-restore]').forEach(b=>b.onclick=async()=>{
     const id=+b.dataset.restore, i=list.findIndex(x=>x.id===id); if(i<0)return;
-    const row2={...list[i]}; delete row2.deletedAt; delete row2.deletedBy;
-    await apiUnbin(id); AB.push(row2); list.splice(i,1);
+    await apiUnbin(id);
+    /* READ IT BACK. apiUnbin bumps ver, so pushing the copy captured when this
+       window opened left the row one version behind and the first edit to a
+       restored document was always refused as somebody else's change. */
+    let row2=null; try{ const d=await api('lod_docs?id=eq.'+id+'&limit=1');
+      if(d&&d[0]&&d[0].id===id)row2=d[0]; }catch(e){}
+    if(!row2){ row2={...list[i]}; delete row2.deletedAt; delete row2.deletedBy; }
+    AB.push(row2); list.splice(i,1);
     await logAct('restore',row2); await loadRevs(); refresh();
     closeMsg(); toast(esc(row2.ref)+' restored — add it back to the plan if it was on one');
   });
@@ -6540,11 +6640,23 @@ function startApp(){
     focusWin([...WINS.values()].find(w=>w.kind==='reg').id); }
   updateUndoBtns(); updateBell(); renderDock();
 }
+/* keep the identity of every row that is still on the register, drop the ones
+   that have gone, and take the new ones as they come */
+function mergeRows(cur,next){
+  const by=new Map((cur||[]).map(r=>[r.id,r]));
+  return next.map(d=>{
+    const r=by.get(d.id); if(!r)return d;
+    /* fields the server no longer sends are gone; our own scratch keys (_status0,
+       deemedAuto and the like) are ours and are left alone */
+    for(const k of Object.keys(r)) if(!(k in d)&&k[0]!=='_'&&k!=='deemedAuto')delete r[k];
+    return Object.assign(r,d);
+  });
+}
 async function loadData(){
   const [ab,pr]=await Promise.all([
     api('lod_docs?deletedAt=is.null&order=sn.asc&limit=2000'),
     api('projects?id=eq.'+PROJ+'&limit=1')]);
-  AB=ab; LIVE=true;
+  AB=mergeRows(AB,ab); LIVE=true;   /* same reason as syncNow — see mergeRows */
   try{ NOTIFS=await api('lod_notifs?order=id.desc&limit=100'); }catch(e){}
   NOTIF_MAX=NOTIFS.length?Math.max(...NOTIFS.map(n=>+n.id||0)):0;
   startLive();
@@ -6598,7 +6710,14 @@ async function syncNow(opts){
     const [docs,notifs]=await Promise.all([
       api('lod_docs?deletedAt=is.null&order=sn.asc&limit=2000'),
       api('lod_notifs?order=id.desc&limit=100').catch(()=>NOTIFS)]);
-    if(Array.isArray(docs)&&docs.length)AB=docs;
+    /* MERGE IN PLACE, NEVER REPLACE. Windows and dialogs hold a row BY
+       REFERENCE — the submissions window, the log-a-cycle box, the edit-cycle
+       box, setCell's captured row. Assigning AB=docs threw every one of those
+       references away, so the row they went on writing into was an orphan the
+       register no longer draws: the write reached the database, the toast said
+       it had saved, and the status on screen never moved. Same objects, new
+       values, and every open window stays connected to its row. */
+    if(Array.isArray(docs)&&docs.length)AB=mergeRows(AB,docs);
     if(Array.isArray(notifs)){
       NOTIFS=notifs;
       NOTIF_MAX=notifs.length?Math.max(...notifs.map(n=>+n.id||0)):NOTIF_MAX;
@@ -6824,6 +6943,13 @@ async function loadRevsFor(id){
     if(a&&a[0])LEGA[id]=a[0]; else delete LEGA[id];
     if(m&&m[0])LEGM[id]=m[0]; else delete LEGM[id];
   }catch(e){}
+  /* THE DERIVE TRIGGER HAS JUST REWRITTEN THIS DOCUMENT — and bumped its ver.
+     Without reading the row back, the copy in memory is one version behind and
+     the very next inline edit is refused as stale, over a change the person
+     made themselves seconds earlier. */
+  try{ const d=await api('lod_docs?id=eq.'+id+'&limit=1');
+       const cur=AB.find(x=>x.id===id);
+       if(d&&d[0]&&cur)Object.assign(cur,d[0]); }catch(e){}
 }
 async function _oldLoadRevs(){
   try{
@@ -6901,7 +7027,18 @@ function editHistRow(r,id){
           days:(sent&&resp&&resp>=sent)?days(sent,resp):null})});
         await loadRevsFor(r.id);
         const fresh=await api('lod_docs?id=eq.'+r.id+'&limit=1');
-        if(fresh&&fresh[0])Object.assign(r,fresh[0]);
+        /* belt and braces to mergeRows: write the server's answer into the row
+           the register is actually drawing, whichever object that now is */
+        if(fresh&&fresh[0]){ const live=AB.find(x=>x.id===r.id);
+          if(live&&live!==r)Object.assign(live,fresh[0]);
+          Object.assign(r,fresh[0]); }
+        /* THE ONE WRITE PATH THAT RECORDED NOTHING — and it is the path every
+           outcome goes through, because a cycle is logged with the reply blank
+           and the verdict is typed in here afterwards. Every RNC, RWC, Code A
+           and Code B was landing on the register unattributed. */
+        await logAct('edit',r,'cycle '+(c.leg||'')+' '+(c.rev||''),
+          (c.submitted||'—')+' / '+(c.responded||'no reply')+' / '+(c.status||'—'),
+          (sent||'—')+' / '+(resp||'no reply')+' / '+(out||'—'));
         if(MOBILE)mobRender(); else refresh();
         toast((c.rev||'Cycle')+' updated');
       }catch(e){ toast('Could not save that cycle'); }
@@ -6921,11 +7058,17 @@ function editHistRow(r,id){
       st=resp?(out||'RWC'):'Under AWPT review';
       hold=resp?'HESCO':'AWPT';
     }
-    el.innerHTML=isLatest
+    /* WORKED OUT FROM THE DATE IN THE BOX, NOT THE ONE IT OPENED WITH. isLatest
+       was computed once when the box opened, so re-typing Sent as an earlier
+       date still promised "as the latest cycle" while the document was quietly
+       handed back to an older revision's verdict. */
+    const sentNow=(document.getElementById('ehSent')||{}).value||c.submitted||'';
+    const latestNow=!same.some(x=>x.id!==c.id&&String(x.submitted||'')>String(sentNow));
+    el.innerHTML=latestNow
       ? `As the latest cycle, the document will read <b>${esc(
           c.leg==='Maaden'?planCodeLabel(st):st)}</b> with
          <b>${esc(hold)}</b> holding it.`
-      : 'An earlier cycle — the document keeps the status its latest cycle gives it.';
+      : 'No longer the latest cycle on this leg — the document will take its status from a later one.';
   };
   ['ehSent','ehResp','ehOut'].forEach(id=>{
     const e=document.getElementById(id); if(e)e.onchange=enote;});
@@ -6953,8 +7096,14 @@ function removeHistRow(r,id){
         await loadRevsFor(r.id);
         // the database re-derives the document from whatever cycles remain
         const fresh=await api('lod_docs?id=eq.'+r.id+'&limit=1');
-        if(fresh&&fresh[0])Object.assign(r,fresh[0]);
-        await logAct('edit',r,'cycle removed',(c.leg||'')+' '+(c.rev||''),'');
+        /* belt and braces to mergeRows: write the server's answer into the row
+           the register is actually drawing, whichever object that now is */
+        if(fresh&&fresh[0]){ const live=AB.find(x=>x.id===r.id);
+          if(live&&live!==r)Object.assign(live,fresh[0]);
+          Object.assign(r,fresh[0]); }
+        await logAct('edit',r,'cycle removed',
+          (c.leg||'')+' '+(c.rev||'')+' · '+(c.submitted||'—')+' / '+
+          (c.responded||'no reply')+' / '+(c.status||'—'),'');
         if(MOBILE)mobRender(); else refresh();
         toast((c.rev||'Cycle')+' removed — now with '+(r.holder||''));
       }catch(e){ toast('Could not remove that cycle'); }
@@ -6962,7 +7111,17 @@ function removeHistRow(r,id){
 }
 function logCycle(r){
   if(!canEdit())return toast('Your account cannot edit');
-  const leg0='Maaden';
+  /* THE LEG THE DOCUMENT IS ACTUALLY ON, not always the Client's. Defaulting to
+     Maaden for every document — with A01 already filled in — meant that anyone
+     who accepted the default recorded an issue to the Client that never
+     happened, on a document that may never have left HESCO. */
+  const leg0=(()=>{
+    const hs=(HIST[r.id]||[]).filter(x=>x.leg==='HESCO'&&(x.submitted||'').trim());
+    const last=hs[hs.length-1];
+    if(!hs.length)return 'HESCO';               /* nothing internal yet */
+    if(!(last.responded||'').trim())return 'HESCO'; /* AWPT has not answered */
+    return (r.holder==='Maaden'||r.status==='Under review') ? 'Maaden' : 'HESCO';
+  })();
   const form=leg=>`
     <label class="fl">Which step?</label>
     <select class="f big" id="lgLeg">
@@ -7007,7 +7166,15 @@ function logCycle(r){
   const rebuild=()=>{
     const leg=document.getElementById('lgLeg').value;
     const box=document.getElementById('lgWrap');
-    box.innerHTML=form(leg); wire();
+    /* KEEP WHAT THEY HAVE ALREADY TYPED. Switching the leg rebuilt the whole
+       form, which silently reset the date sent to today and emptied the reply —
+       so correcting the leg quietly undid the dates entered before it. The
+       revision is the one field that must follow the leg, so it is not kept. */
+    const keep={};
+    ['lgSent','lgResp'].forEach(id=>{const e=document.getElementById(id); if(e)keep[id]=e.value;});
+    box.innerHTML=form(leg);
+    Object.keys(keep).forEach(id=>{const e=document.getElementById(id); if(e&&keep[id])e.value=keep[id];});
+    wire();
   };
   const wire=()=>{
     const L=document.getElementById('lgLeg');
@@ -7039,7 +7206,11 @@ function logCycle(r){
         logAct('edit',r,'submission','',leg+' '+rev+' '+sent);
         await loadRevsFor(r.id);
         const fresh=await api('lod_docs?id=eq.'+r.id+'&limit=1');
-        if(fresh&&fresh[0])Object.assign(r,fresh[0]);
+        /* belt and braces to mergeRows: write the server's answer into the row
+           the register is actually drawing, whichever object that now is */
+        if(fresh&&fresh[0]){ const live=AB.find(x=>x.id===r.id);
+          if(live&&live!==r)Object.assign(live,fresh[0]);
+          Object.assign(r,fresh[0]); }
         if(MOBILE)mobRender(); else refresh();
         toast(rev+' logged — now with '+(r.holder||''));
       }catch(e){
