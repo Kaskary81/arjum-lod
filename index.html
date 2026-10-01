@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v125        2026-09-28
+     BUILD: v127        2026-10-01
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -1572,7 +1572,10 @@ const COLS=[
   {k:'remark',       t:'Remark',       w:250},
   {k:'onHold',       t:'On hold',      w:88, ro:1, cls:'ctr',
      calc:r=>isHold(r)?'Yes':''},
-  {k:'holdNote',     t:'Reason held',  w:230},
+  /* READ-ONLY, BECAUSE TYPING HERE NEVER HELD ANYTHING. The reason saved and
+     the document went on running, which reads exactly like it worked. The hold
+     and its reason are set together, in one place. */
+  {k:'holdNote',     t:'Reason held',  w:230, ro:1},
   /* HESCO → AWPT */
   {k:'hRev',  t:'HESCO rev',   w:88,  ro:1, cls:'ctr mono', leg:'hesco', calc:r=>legRev(r,'HESCO')},
   {k:'hSent', t:'Sent to AWPT',w:112, ro:1, cls:'mono',     leg:'hesco', calc:r=>legSent(r,'HESCO')},
@@ -1656,7 +1659,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-09-28 · v125';
+const BUILD='LOD 2026-10-01 · v127';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2385,12 +2388,21 @@ const colFiltered=(G,k)=>!!(G&&G.colf&&G.colf[k]);
 const anyColFilter=G=>!!(G&&G.colf&&Object.keys(G.colf).length);
 function cellText(r,c){
   const v=c.calc?c.calc(r):(r[c.k]??'');
+  /* Ball in court is a plain cell, not a pill — a held document is on nobody's
+     desk, and saying "HESCO" there sends somebody chasing it */
+  if(c.k==='holder'&&isHold(r))
+    return '<span title="'+esc((r.holdNote||'Held pending prerequisites')+
+      (r.holdSince?' · since '+r.holdSince:''))+'">On hold</span>';
   if(c.pill){
     if((c.k==='hOut'||c.k==='mOut')&&isHold(r))
       return statusPill('On hold', 'On hold', r.holdNote||'Held pending prerequisites');
     if(c.k==='hOut'&&isInferred(lastCycle(r,'HESCO')))
       return statusPill(v, v+' ~',
         'Worked out from the resubmission pattern, not recorded — this is an AWPT-only document, so no Client submission can evidence a clearance');
+    /* same on the document's own status, which reads the stored value */
+    if(c.k==='status'&&isHold(r))
+      return statusPill('On hold','On hold',
+        (r.holdNote||'Held pending prerequisites')+(r.holdSince?' · since '+r.holdSince:''));
     if(c.k==='mOut')return statusPill(v,maadenLabel(v), (v==='Replied'&&deemedDate(r))
       ? 'No Client reply within 10 working days — taken as issued for information under the agreed procedure'
       : '');
@@ -3094,6 +3106,72 @@ function wireComments(root,id,redraw){
         await api('lod_comments?id=eq.'+c.id,{method:'PATCH',
           body:JSON.stringify({body:v,editedAt:nowTs()})});
         c.body=v; c.editedAt=nowTs(); redraw();},'primary']]);});
+}
+/* PUTTING A DOCUMENT ON HOLD, AND TAKING IT OFF AGAIN.
+   The register has always SHOWN a hold — purple status, the clock stopped, out
+   of the overdue figures — but nothing in the app could set one. The flag was
+   read in two places and written in none, so the nine documents held in August
+   were written straight into the database and could never be released. The
+   "Reason held" column being editable made it worse: typing a reason there
+   saved the reason and left the document running, which reads as if it worked.
+   The hold, the reason and the date now move together. */
+function holdBox(r,after){
+  if(!canEdit())return toast('Your account cannot edit');
+  const held=isHold(r);
+  const save=async(patch,oldv,newv,msg)=>{
+    try{
+      await apiUpdate(r.id,patch);
+      Object.assign(r,patch);
+      const live=AB.find(x=>x.id===r.id); if(live&&live!==r)Object.assign(live,patch);
+      await logAct('edit',r,'onHold',oldv,newv);
+      if(MOBILE)mobRender(); else { refresh(); refreshHistory(); }
+      if(after)after();
+      toast(msg);
+    }catch(e){ console.error(e);
+      toast(e instanceof StaleRow?'Someone else changed this document':'Not saved — check your connection'); }
+  };
+  if(held){
+    msgBox((r.ref||r.docNumber||'This document')+' is on hold','',
+      `<b>${esc(r.title||'')}</b>
+       <div class="hint" style="margin:8px 0 10px">Held since ${esc(r.holdSince||'—')}.
+         Taking it off hold puts it back to
+         <b>${esc(statusText(r.status||'Not issued'))}</b> with
+         <b>${esc(r.holder||'HESCO')}</b> holding it, and the day count starts
+         again from where the submission history leaves it.</div>
+       <label class="fl">What it is waiting for</label>
+       <input class="f big" id="hbnote2" value="${esc(r.holdNote||'')}">`,
+      [['Cancel',null,''],
+       ['Save the reason',async()=>{
+         const note=(document.getElementById('hbnote2').value||'').trim();
+         if(!note)return toast('Say what it is waiting for');
+         if(note===(r.holdNote||''))return;
+         await save({holdNote:note},'On hold — '+(r.holdNote||''),'On hold — '+note,
+                    'Reason updated');
+       },''],
+       ['Take off hold',async()=>{
+        await save({onHold:false,holdSince:''},'On hold — '+(r.holdNote||''),'',
+                   (r.ref||'The document')+' is off hold');
+      },'primary']]);
+    return;
+  }
+  msgBox('Put '+(r.ref||r.docNumber||'this document')+' on hold','',
+    `<b>${esc(r.title||'')}</b>
+     <div class="hint" style="margin:8px 0 10px">A held document is waiting on a
+       prerequisite, not on a reviewer. Its review clock stops, it comes out of
+       the overdue figures, and the submission history is kept exactly as it is.</div>
+     <label class="fl">Why is it held?</label>
+     <input class="f big" id="hbnote" placeholder="Until the trial pits are done"
+       value="${esc(r.holdNote||'')}">
+     <label class="fl" style="margin-top:8px">Held from</label>
+     <input class="f big" id="hbsince" type="date" value="${esc(r.holdSince||today)}">`,
+    [['Cancel',null,''],['Put on hold',async()=>{
+      const note=(document.getElementById('hbnote').value||'').trim();
+      const since=document.getElementById('hbsince').value||today;
+      if(!note)return toast('Say what it is waiting for');
+      if(since>today)return toast('A hold cannot start in the future');
+      await save({onHold:true,holdNote:note,holdSince:since},'','On hold — '+note,
+                 (r.ref||'The document')+' is on hold');
+    },'primary']]);
 }
 /* The submission history for one document, in its own window. The plan's
    history button, the register and the notification list all come here, so a
@@ -4350,6 +4428,11 @@ function deemedDate(r){
 }
 function reviewClock(r){
   if(r.status!=='Under review')return null;
+  /* A HELD DOCUMENT IS NOT ON ANYBODY'S CLOCK. heldDays stopped for a hold and
+     this did not, so a document waiting on a prerequisite of ours went on
+     accruing days against the Client — and this clock feeds the escalation PDF,
+     which is a letter to Maaden. Nothing we are holding belongs in it. */
+  if(isHold(r))return null;
   /* THE CLOCK NEEDS A SUBMISSION TO RUN FROM. One document's rollup said 'Under
      review' with the ball in Maaden's court while both the Client leg table and
      the history showed it had never been sent to them — and on that alone it
@@ -5996,7 +6079,10 @@ function card(r,i){
       <div class="dc-m">${esc(SHORT_DISC[r.discipline]||r.discipline||'—')}</div></article>`;
   }
   const onLeg=(LEG==='hesco'||LEG==='maaden');
-  const k=onLeg?legState(r,LEG):(r.status||'Not issued');
+  /* A HOLD SHOWS ON EVERY VIEW. The leg views read it through legState, which
+     tests the hold first, but "Everything" read the stored status straight —
+     so a held document sat in the list looking like any other RWC. */
+  const k=onLeg?legState(r,LEG):(isHold(r)?'On hold':(r.status||'Not issued'));
   const late=(r.holder!=='Closed'&&r.plannedDate&&r.plannedDate<today)?days(r.plannedDate,today):0;
   const out=heldDays(r)||0;
   /* WHAT A CARD IS FOR: which document, what state, how bad — nothing else.
@@ -6019,8 +6105,9 @@ function card(r,i){
   }
   return `<article class="dcard" data-mo="${r.id}"
       style="animation-delay:${Math.min(i||0,12)*26}ms;--edge:${
-        onLeg?(COLOR[k]||LCOLOR[k]||'#b9bfc7'):(HCOLOR[r.holder]||'#b9bfc7')}">
-    <div class="dc-h"><span class="dc-no">${esc(onLeg?(r.ref||''):(r.holder||''))}</span>
+        isHold(r)?HOLDCOLOR
+          :onLeg?(COLOR[k]||LCOLOR[k]||'#b9bfc7'):(HCOLOR[r.holder]||'#b9bfc7')}">
+    <div class="dc-h"><span class="dc-no">${esc(onLeg?(r.ref||''):(isHold(r)?'On hold':(r.holder||'')))}</span>
       ${(()=>{ /* the leg's own vocabulary and colours, with Maaden's grade letters */
         const col=COLOR[k]||LCOLOR[k]||'#8c9aa8';
         /* on the Maaden leg and on Everything alike, a Client verdict is
@@ -6101,7 +6188,10 @@ function mobOne(){
     <div class="spec"><h4>Submission history</h4>
       <div style="padding:12px 14px">
         ${canEdit()?`<button class="btn primary" id="mlogcyc"
-           style="width:100%;padding:11px;border-radius:11px;margin-bottom:12px">Log a submission</button>`:''}
+           style="width:100%;padding:11px;border-radius:11px;margin-bottom:8px">Log a submission</button>
+         <button class="btn" id="mhold"
+           style="width:100%;padding:11px;border-radius:11px;margin-bottom:12px">${
+           isHold(r)?'Take off hold':'Put on hold'}</button>`:''}
         ${historyHTML(r)}</div></div>
     <div class="spec"><h4>Discussion${CCOUNT[r.id]?' ('+CCOUNT[r.id]+')':''}</h4>
       <div style="padding:12px 14px" id="mdisc">${commentsHTML(r.id)}${composerHTML(r.id)}</div></div>
@@ -6413,6 +6503,8 @@ function wireMob(){
   if(an)an.onclick=()=>exportPlanAnalysisPDF(PLAN_KIND);
   const lg=document.getElementById('mlogcyc');
   if(lg&&MOB.view==='one'){const r=AB.find(x=>x.id===MOB.id); if(r)lg.onclick=()=>logCycle(r);}
+  const mh=document.getElementById('mhold');
+  if(mh&&MOB.view==='one'){const r=AB.find(x=>x.id===MOB.id); if(r)mh.onclick=()=>holdBox(r);}
   if(MOB.view==='one'){const rr=AB.find(x=>x.id===MOB.id);
     if(rr&&canEdit())b.querySelectorAll('[data-hid]').forEach(el=>
       el.onclick=()=>editHistRow(rr,+el.dataset.hid));}
@@ -7230,10 +7322,15 @@ function paintCycles(w,r){
     '<div class="planbar" style="margin-bottom:11px">'+
     (canEdit()?'<button class="btn primary" id="hlog">Log a submission</button>':'')+
     '<button class="btn" id="hdisc">Discussion'+(CCOUNT[r.id]?' ('+CCOUNT[r.id]+')':'')+'</button>'+
+    (canEdit()?'<button class="btn" id="hhold">'+
+      (isHold(r)?'Take off hold':'Put on hold')+'</button>':'')+
+    (isHold(r)?'<span class="pill" style="background:#7030a01f;color:#7030a0">On hold'+
+      (r.holdSince?' since '+esc(r.holdSince):'')+'</span>':'')+
     '</div>'+
     historyHTML(r)+'</div></div>';
   const lb=w.body.querySelector('#hlog'); if(lb)lb.onclick=()=>logCycle(r);
   const db=w.body.querySelector('#hdisc'); if(db)db.onclick=()=>openDiscussion(r);
+  const hb=w.body.querySelector('#hhold'); if(hb)hb.onclick=()=>holdBox(r);
   if(canEdit())w.body.querySelectorAll('[data-hid]').forEach(el=>
     el.onclick=()=>editHistRow(r,+el.dataset.hid));
 }
