@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v128        2026-10-05
+     BUILD: v129        2026-10-05
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -631,6 +631,10 @@ body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent)
 #printroot{display:none}
 .dashbar{display:flex;gap:8px;align-items:center;justify-content:flex-end;padding:8px 14px 0}
 .dashbar .hint{margin-right:auto}
+body.mobile .dashbar{padding:4px 0 10px;flex-wrap:wrap;justify-content:flex-start}
+body.mobile .dashbar .hint{display:none}
+body.mobile .dashbar button{flex:1 1 auto;min-height:38px}
+body.mobile .mcount #mxlsx{flex:none}
 @media print{
   #printroot .dh2{font-size:10pt;color:#12304f;margin:10pt 0 3pt;break-after:avoid}
   #printroot .dtbl{width:100%;border-collapse:collapse;font-size:8pt;break-inside:auto}
@@ -1670,7 +1674,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-10-05 · v128';
+const BUILD='LOD 2026-10-05 · v129';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -5874,7 +5878,7 @@ function exportCell(r,c){
   return v;
 }
 function tableAOA(){
-  const cs=visCols(), rows=GRID?GRID.rows:AB;
+  const cs=visCols(), rows=reportRows();
   return [cs.map(c=>c.t)].concat(rows.map(r=>cs.map(c=>exportCell(r,c))));
 }
 async function exportXLSX(){
@@ -6182,6 +6186,7 @@ function mobRender(){
       tr.style.cursor='pointer';
       tr.onclick=()=>{ MOB.view='one'; MOB.id=+tr.dataset.go; mobRender(); };});
   }
+  if(mb&&MOB.view==='dash')wireDashBar({body:mb});
   wireClock(document.getElementById('mbody')); updateBell();
 }
 const offBar=()=>LIVE?'':`<div class="offbar"><b>Saved snapshot.</b> This copy cannot reach the
@@ -6199,8 +6204,8 @@ function mobDash(){
       .map(([k,t,sub])=>`<button class="legtab${LEG===k?' on':''}" data-leg="${k}">
         <b>${t}</b><span>${sub}</span></button>`).join('')}</div>`;
   if(LEG==='hesco'||LEG==='maaden')
-    return offBar()+legbar+legDashHTML(LEG);
-  return offBar()+legbar+
+    return offBar()+legbar+dashBarHTML()+legDashHTML(LEG);
+  return offBar()+legbar+dashBarHTML()+
     `<div class="dash">
        <div class="kpis">${kpiHTML()}</div>
        <div class="panel"><h3>Recovery plan — committed against submitted</h3>
@@ -6326,7 +6331,7 @@ function mobList(){
         :`<b>${rows.length}</b> of <b>${AB.length}</b> documents`}</span>
       ${canEdit()?`<button id="mpick">${MOB.pick?'Cancel':'Select'}</button>`:''}
       ${MOB.pick&&PICKED.size?'<button id="mtoplan">Add to plan</button>':''}
-      ${MOB.pick?'':'<button id="mpdf">Export PDF</button>'}</div>
+      ${MOB.pick?'':'<button id="mpdf">Export PDF</button><button id="mxlsx">Export Excel</button>'}</div>
     ${rows.length?(canEdit()?`<div class="swipehint">${MOB.pick
         ?'Swipe right to tick · swipe left to untick':'Swipe a card right to tick it'}</div>`:'')
       +rows.map((r,i)=>card(r,i)).join('')
@@ -6336,7 +6341,7 @@ function mobLate(){
   const rows=AB.filter(r=>r.holder!=='Closed'&&r.plannedDate&&r.plannedDate<today)
     .map(r=>({...r,late:days(r.plannedDate,today)})).sort((a,b)=>b.late-a.late);
   return offBar()+`<div class="mcount"><span class="n"><b>${rows.length}</b> past target date</span>
-      <button id="mpdf">Export PDF</button></div>`+
+      <button id="mpdf">Export PDF</button><button id="mxlsx">Export Excel</button></div>`+
     (rows.length?rows.map((r,i)=>card(r,i)).join('')
       :'<div class="empty"><b>Nothing overdue</b>Every document is inside its target date.</div>');
 }
@@ -6706,6 +6711,7 @@ function wireMob(){
   b.querySelectorAll('[data-mfs]').forEach(el=>el.onclick=()=>{
     MOB.fs=el.dataset.mfs; MOB.f=''; MOB.fage=null; MOB.fageL=''; mobRender();});
   const mp=document.getElementById('mpdf'); if(mp)mp.onclick=exportPDF;
+  const mx=document.getElementById('mxlsx'); if(mx)mx.onclick=exportXLSX;
   const mc=document.getElementById('mclear');
   if(mc)mc.onclick=()=>{MOB.fs='';MOB.fd='';MOB.f='';MOB.q='';MOB.fage=null;MOB.fageL='';
     MOB.fset=null;mobRender();};
