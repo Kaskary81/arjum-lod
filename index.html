@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v127        2026-10-01
+     BUILD: v128        2026-10-05
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -629,6 +629,17 @@ body.mobile .kindtab.on{background:var(--accent-soft);border-color:var(--accent)
   #printroot .c-toClient{width:5.5%;text-align:center;font-family:var(--mono);font-size:6.6pt}
 }
 #printroot{display:none}
+.dashbar{display:flex;gap:8px;align-items:center;justify-content:flex-end;padding:8px 14px 0}
+.dashbar .hint{margin-right:auto}
+@media print{
+  #printroot .dh2{font-size:10pt;color:#12304f;margin:10pt 0 3pt;break-after:avoid}
+  #printroot .dtbl{width:100%;border-collapse:collapse;font-size:8pt;break-inside:auto}
+  #printroot .dtbl th{background:#12304f;color:#fff;text-align:left;padding:2.5pt 4pt;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #printroot .dtbl td{border-bottom:.4pt solid #c3ced9;padding:2.5pt 4pt}
+  #printroot .dtbl tr{break-inside:avoid}
+  #printroot .dnote{font-size:7.4pt;color:#555;margin-top:8pt}
+}
 @media screen{ body.printing #printroot{display:none} }
 @media print{
   @page{ size:A4 landscape; margin:10mm 8mm; }
@@ -1659,7 +1670,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-10-01 · v127';
+const BUILD='LOD 2026-10-05 · v128';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2471,6 +2482,7 @@ function renderGrid(g){
     <button class="btn" id="ghist2">Submissions</button>
     <button class="btn" id="gtalk">Discussion</button>
     <button class="btn" id="gpdf">Export PDF</button>
+    <button class="btn" id="gxlsx">Export Excel</button>
     <button class="btn" id="ghist">Changes</button>
     <button class="btn" id="gcols">Columns</button>
     <span class="hint" title="Right-click (or shift-click) a column heading to move it, freeze up to it, sort or hide it">⌘ right-click a heading</span>
@@ -2532,6 +2544,7 @@ function wireGrid(g){
   $('gdel').onclick=()=>{act();deleteSelected();};
   $('gcols').onclick=()=>{act();openCols();};
   $('gpdf').onclick=()=>{act();exportPDF();};
+  $('gxlsx').onclick=()=>{act();exportXLSX();};
   const corner=W.body.querySelector('thead th.corner');
   if(corner)corner.oncontextmenu=e=>{ e.preventDefault(); closeColMenu();
     const m=document.createElement('div'); m.className='ctxmenu';
@@ -5608,6 +5621,13 @@ function renderDash(){
   LEG=keepLeg; GRID=keepGrid;
 }
 function renderDashOne(w){
+  renderDashOne0(w);
+  if(!w||!WINS.has(w.id))return;
+  if(!w.body.querySelector('.dashbar')){
+    w.body.insertAdjacentHTML('afterbegin',dashBarHTML()); }
+  wireDashBar(w);
+}
+function renderDashOne0(w){
   if(!w||!WINS.has(w.id))return;
   /* the "Everything" dashboard follows the shared leg tabs; a leg dashboard is fixed */
   LEG=(w.kind==='dash')?LEGALL:(w.leg||'all');
@@ -5662,6 +5682,173 @@ function renderDashOne(w){
           const i=g.rows.findIndex(x=>x.id===r.id);
           if(i>=0){ g.cur={r:i,c:0}; g.sel={r1:i,c1:0,r2:i,c2:0}; paintSel(); } },250); } };});
 }
+
+/* ================= dashboard: print, PDF and Excel =================
+   Everything below reads the dashboard exactly as it is drawn, so the three
+   tabs, the recovery plan and any later panel export without a second copy of
+   the logic that could drift from what is on screen. */
+function dashModel(w){
+  const tx=el=>(el?el.textContent:'').replace(/\s+/g,' ').trim();
+  const out={tables:[],notes:[]};
+  const body=w.body;
+  const tab=body.querySelector('.legtab.on b');
+  out.scope=tab?tx(tab):'Everything';
+  const kpiTable=(title,root)=>{
+    const rows=[...root.querySelectorAll('.kpi')].map(k=>{
+      const v=k.querySelector('.v'), sm=v&&v.querySelector('small');
+      const pc=sm?tx(sm):'';
+      const fig=v?[...v.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join('').trim():'';
+      return [tx(k.querySelector('.k')),sm?(+fig):tx(v),(pc?pc+' — ':'')+tx(k.querySelector('.p'))];});
+    if(rows.length)out.tables.push({title,head:['Measure','Figure','Detail'],rows});
+  };
+  const panelParts=(title,p)=>{
+    kpiTable(title,p);
+    p.querySelectorAll('table.rctbl').forEach(t=>{
+      const head=[...t.querySelectorAll('thead th')].map(tx);
+      const rows=[...t.querySelectorAll('tbody tr')].map(tr=>[...tr.children].map(tx));
+      const prev=t.previousElementSibling;
+      out.tables.push({title:(prev&&prev.tagName==='H3'?tx(prev):title),head,rows});
+    });
+    const dr=[...p.querySelectorAll('.drow')];
+    if(dr.length)out.tables.push({title,head:['Discipline','Documents','Share'],
+      rows:dr.map(r=>[tx(r.querySelector('.dlab')),+tx(r.querySelector('.dn'))||0,tx(r.querySelector('.dp'))])});
+    const tg=[...p.querySelectorAll('.tcell')];
+    if(tg.length)out.tables.push({title,head:['Measure','Figure','Detail'],
+      rows:tg.map(c=>[tx(c.querySelector('.tk')),tx(c.querySelector('.tv')),tx(c.querySelector('.ts'))])});
+    const lg=[...p.querySelectorAll('.balllg .blg')];
+    if(lg.length)out.tables.push({title:title+' — totals',head:['Group','Documents'],
+      rows:lg.map(b=>[tx(b.querySelector('span')),+tx(b.querySelector('b'))||0])});
+    const rl=p.querySelectorAll('.rclegend span');
+    if(rl.length)out.tables.push({title:title+' — status',head:['Recovery plan status'],
+      rows:[...rl].map(s=>[tx(s)])});
+    p.querySelectorAll('.legtot,.hint').forEach(h=>{const t=tx(h); if(t)out.notes.push(t);});
+  };
+  body.querySelectorAll('.dash > *').forEach(el=>{
+    if(el.classList.contains('kpis'))kpiTable('Headline figures',el);
+    else if(el.classList.contains('panel')){
+      const h=el.querySelector('h3');
+      panelParts(h?tx(h):'Panel',el);
+    }
+  });
+  return out;
+}
+const DASH_FILE=w=>'ARJUM_LOD_Dashboard_'+
+  (dashModel(w).scope||'All').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'')+'_'+today;
+function dashReportHTML(w){
+  const m=dashModel(w);
+  return `<div class="rhead"><div><h1>Design deliverables progress — dashboard</h1>
+      <div class="rs">${esc(m.scope)}${USER?' · '+esc(USER.name):''}</div></div>
+      <div class="rd">Printed <span>${esc(niceDate(today))}</span><br>${esc(BUILD)}</div></div>`+
+    m.tables.map(t=>`<h2 class="dh2">${esc(t.title)}</h2>
+      <table class="dtbl"><thead><tr>${t.head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
+      <tbody>${t.rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`).join('')+
+    (m.notes.length?`<div class="dnote">${m.notes.map(esc).join('<br>')}</div>`:'');
+}
+function printDash(w,pdf){
+  dayRoll();
+  let root=document.getElementById('printroot');
+  if(!root){ root=document.createElement('div'); root.id='printroot'; document.body.appendChild(root); }
+  root.innerHTML=dashReportHTML(w);
+  document.body.classList.add('printing','upright');
+  const done=()=>{ document.body.classList.remove('printing','upright');
+    window.removeEventListener('afterprint',done); };
+  window.addEventListener('afterprint',done);
+  /* inside the click, not after a timer — phone browsers drop a deferred print */
+  try{ window.print(); }catch(e){}
+  setTimeout(done,1500);
+  if(pdf)toast('In the print window choose “Save as PDF”');
+}
+/* A small self-contained .xlsx writer (stored zip, inline strings): no library
+   to download, so it works offline and behind a firewall. */
+const XL={
+  crcT:null,
+  crc(b){ if(!XL.crcT){XL.crcT=new Uint32Array(256);
+      for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;XL.crcT[n]=c>>>0;}}
+    let c=0xFFFFFFFF; for(let i=0;i<b.length;i++)c=XL.crcT[(c^b[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; },
+  zip(files){
+    const enc=new TextEncoder(), parts=[], cen=[]; let off=0;
+    const u16=n=>[n&255,(n>>8)&255], u32=n=>[n&255,(n>>8)&255,(n>>16)&255,(n>>>24)&255];
+    files.forEach(f=>{
+      const nm=enc.encode(f.name), data=enc.encode(f.data), crc=XL.crc(data);
+      const lh=new Uint8Array([0x50,0x4b,3,4,20,0,0,8,0,0,0,0,0x21,0,...u32(crc),...u32(data.length),...u32(data.length),...u16(nm.length),0,0]);
+      parts.push(lh,nm,data);
+      cen.push({nm,crc,len:data.length,off});
+      off+=lh.length+nm.length+data.length; });
+    let cs=0;
+    cen.forEach(c=>{
+      const h=new Uint8Array([0x50,0x4b,1,2,20,0,20,0,0,8,0,0,0,0,0x21,0,...u32(c.crc),...u32(c.len),...u32(c.len),...u16(c.nm.length),0,0,0,0,0,0,0,0,0,0,0,0,...u32(c.off)]);
+      parts.push(h,c.nm); cs+=h.length+c.nm.length; });
+    parts.push(new Uint8Array([0x50,0x4b,5,6,0,0,0,0,...u16(cen.length),...u16(cen.length),...u32(cs),...u32(off),0,0]));
+    return new Blob(parts,{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  },
+  col(i){let s='';i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26);}return s;},
+  esc(v){return String(v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'');},
+  sheet(aoa,widths){
+    const rows=aoa.map((r,ri)=>`<row r="${ri+1}">`+r.map((v,ci)=>{
+      if(v==null||v==='')return '';
+      const ref=XL.col(ci)+(ri+1), st=ri===0?' s="1"':'';
+      if(typeof v==='number'&&isFinite(v))return `<c r="${ref}"${st}><v>${v}</v></c>`;
+      return `<c r="${ref}" t="inlineStr"${st}><is><t xml:space="preserve">${XL.esc(v)}</t></is></c>`;
+    }).join('')+'</row>').join('');
+    const cols=widths?'<cols>'+widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')+'</cols>':'';
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+      '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'+
+      cols+'<sheetData>'+rows+'</sheetData></worksheet>';
+  },
+  book(sheets){   /* [{name, aoa, widths}] */
+    const names=sheets.map((s,i)=>XL.esc((s.name||'Sheet'+(i+1)).replace(/[\\\/?*\[\]:]/g,' ').slice(0,31)));
+    const files=[
+      {name:'[Content_Types].xml',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+
+        sheets.map((s,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')+'</Types>'},
+      {name:'_rels/.rels',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
+      {name:'xl/workbook.xml',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'+
+        names.map((n,i)=>`<sheet name="${n}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')+'</sheets></workbook>'},
+      {name:'xl/_rels/workbook.xml.rels',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+        sheets.map((s,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')+
+        `<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`},
+      {name:'xl/styles.xml',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="10"/><name val="Calibri"/></font><font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF12304F"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs></styleSheet>'}];
+    sheets.forEach((s,i)=>files.push({name:`xl/worksheets/sheet${i+1}.xml`,data:XL.sheet(s.aoa,s.widths)}));
+    return XL.zip(files);
+  },
+  save(blob,name){
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},4000);
+  }
+};
+function exportDashXLSX(w){
+  const m=dashModel(w);
+  if(!m.tables.length)return toast('Nothing on the dashboard to export yet');
+  /* one sheet per table would scatter a one-page dashboard over eight tabs, so
+     the figures go on one Summary sheet and each wide table gets its own */
+  const used=new Set(), nm=t=>{ let n=t.replace(/[\\\/?*\[\]:]/g,' ').slice(0,28).trim()||'Sheet', k=n, i=2;
+    while(used.has(k.toLowerCase()))k=n.slice(0,26)+' '+(i++); used.add(k.toLowerCase()); return k; };
+  const sum=[['Section','Measure','Figure','Detail']], sheets=[];
+  m.tables.forEach(t=>{
+    if(t.head.join()==='Measure,Figure,Detail'||t.head.length<=2&&t.rows.length<=12)
+      t.rows.forEach(r=>sum.push([t.title,...(t.head.length===3?r:[r[0],r[1]!=null?r[1]:'',''])]));
+    else sheets.push({name:nm(t.title),aoa:[t.head].concat(t.rows),
+      widths:t.head.map((h,i)=>i===0?42:16)});
+  });
+  used.add('summary');
+  sum.push([],['Dashboard',m.scope,niceDate(today),BUILD]);
+  const first={name:'Summary',aoa:sum,widths:[38,34,12,52]};
+  XL.save(XL.book([first,...sheets]),DASH_FILE(w)+'.xlsx');
+  toast('Excel file downloaded');
+}
+function dashBarHTML(){
+  return `<div class="dashbar"><span class="hint">Dashboard report</span>
+    <button class="btn" data-dx="print">Print</button>
+    <button class="btn" data-dx="pdf">Export PDF</button>
+    <button class="btn" data-dx="xlsx">Export Excel</button></div>`;
+}
+function wireDashBar(w){
+  w.body.querySelectorAll('[data-dx]').forEach(b=>b.onclick=()=>{
+    const k=b.dataset.dx;
+    if(k==='xlsx')exportDashXLSX(w); else printDash(w,k==='pdf'); });
+}
+
 function refresh(){ renderAllGrids(); renderDash(); renderDock();
   refreshHistory();
   /* the plan reads each document's holder, so it goes stale the moment one moves */
@@ -5692,13 +5879,13 @@ function tableAOA(){
 }
 async function exportXLSX(){
   try{
-    const X=await ensureXLSX();
-    const ws=X.utils.aoa_to_sheet(tableAOA());
-    ws['!cols']=visCols().map(c=>({wpx:colW(c)}));
-    const wb=X.utils.book_new(); X.utils.book_append_sheet(wb,ws,'As-Builts');
-    X.writeFile(wb,'ARJUM_LOD_'+today+'.xlsx');
-    toast('Excel file downloaded');
-  }catch(e){ toast('Could not load the Excel library — CSV works offline'); exportCSV(); }
+    dayRoll();
+    const aoa=tableAOA();
+    if(aoa.length<2)return toast('Nothing to export with those filters');
+    XL.save(XL.book([{name:'As-Builts',aoa,widths:visCols().map(c=>Math.max(8,Math.min(60,Math.round(colW(c)/7))))}]),
+      'ARJUM_LOD_'+today+'.xlsx');
+    toast((aoa.length-1)+' rows exported to Excel');
+  }catch(e){ toast('Excel export failed — downloading CSV instead'); exportCSV(); }
 }
 function exportCSV(){
   const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
