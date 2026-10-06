@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v131        2026-10-06
+     BUILD: v132        2026-10-06
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -643,7 +643,7 @@ body.mobile .mcount #mxlsx{flex:none}
     -webkit-print-color-adjust:exact; print-color-adjust:exact; color:#0b0b0b; font-size:10px}
   #printroot .dashprint *{-webkit-print-color-adjust:exact; print-color-adjust:exact; box-shadow:none!important}
   #printroot .dashprint .dash{padding:0;display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}
-  #printroot .dashprint .dash>.kpis,#printroot .dashprint .dash>.panel:has(.rcbar,.rctbl,.legtot,.empty,.tgrid){grid-column:1/-1}
+  #printroot .dashprint .dash>.kpis,#printroot .dashprint .dash>.panel{grid-column:1/-1}
   #printroot .dashprint .dash>*{min-width:0;box-sizing:border-box}
   #printroot .dashprint .dash>.panel{margin-bottom:0}
   #printroot .dashprint .dash>.kpis{margin-bottom:0}
@@ -667,6 +667,13 @@ body.mobile .mcount #mxlsx{flex:none}
     border:1px solid #c3ced9!important}
   html body #printroot .dashprint .blg *{color:#0b0b0b!important}
   html body #printroot .dashprint .blg i{display:inline-block}
+  #printroot .dashprint .dbars .dn{width:30px!important;height:auto!important;transform:none!important;
+    flex:none;text-align:right;font-weight:700;font-size:10px}
+  #printroot .dashprint .dbars .drow{margin-bottom:4px!important;height:auto!important}
+  #printroot .dashprint .dbars .dtrack{height:12px!important}
+  #printroot .dashprint .dbars .dlab{width:96px;font-size:9px}
+  #printroot .dashprint .dbars .dp{width:34px;font-size:9px;text-align:right}
+  #printroot .dashprint .dash>.panel:has(.dbars){grid-column:1/-1;break-inside:auto}
   #printroot .dashprint [data-lstate],#printroot .dashprint [data-go]{cursor:default}
 }
 @media print{
@@ -1708,7 +1715,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-10-06 · v131';
+const BUILD='LOD 2026-10-06 · v132';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
