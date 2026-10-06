@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v130        2026-10-06
+     BUILD: v131        2026-10-06
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -637,13 +637,17 @@ body.mobile .dashbar button{flex:1 1 auto;min-height:38px}
 body.mobile .mcount #mxlsx{flex:none}
 
 @media print{
-  #printroot .dashprint{
+  #printroot .dashprint{max-width:100%;overflow:hidden;
     --surface:#ffffff; --surface2:#f4f6f8; --field:#fff; --ink:#0b0b0b; --ink2:#444; --muted:#6b6b6b;
     --grid:#d5d9de; --ring:#c3ced9; --shadow:none;
     -webkit-print-color-adjust:exact; print-color-adjust:exact; color:#0b0b0b; font-size:10px}
   #printroot .dashprint *{-webkit-print-color-adjust:exact; print-color-adjust:exact; box-shadow:none!important}
-  #printroot .dashprint .dash{padding:0}
-  #printroot .dashprint .kpis{grid-template-columns:repeat(4,1fr)!important;gap:6px;margin-bottom:8px}
+  #printroot .dashprint .dash{padding:0;display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}
+  #printroot .dashprint .dash>.kpis,#printroot .dashprint .dash>.panel:has(.rcbar,.rctbl,.legtot,.empty,.tgrid){grid-column:1/-1}
+  #printroot .dashprint .dash>*{min-width:0;box-sizing:border-box}
+  #printroot .dashprint .dash>.panel{margin-bottom:0}
+  #printroot .dashprint .dash>.kpis{margin-bottom:0}
+  #printroot .dashprint .kpis{grid-template-columns:repeat(4,1fr)!important;gap:6px}
   #printroot .dashprint .kpi{padding:6px 8px;break-inside:avoid}
   #printroot .dashprint .kpi .v{font-size:19px}
   #printroot .dashprint .panel{padding:8px 10px;margin-bottom:8px;break-inside:avoid}
@@ -1704,7 +1708,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-10-06 · v130';
+const BUILD='LOD 2026-10-06 · v131';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -5786,8 +5790,8 @@ function printDash(w,pdf){
   let root=document.getElementById('printroot');
   if(!root){ root=document.createElement('div'); root.id='printroot'; document.body.appendChild(root); }
   root.innerHTML=dashReportHTML(w);
-  document.body.classList.add('printing','upright');
-  const done=()=>{ document.body.classList.remove('printing','upright');
+  document.body.classList.add('printing');
+  const done=()=>{ document.body.classList.remove('printing');
     window.removeEventListener('afterprint',done); };
   window.addEventListener('afterprint',done);
   /* inside the click, not after a timer — phone browsers drop a deferred print */
