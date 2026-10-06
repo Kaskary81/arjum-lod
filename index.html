@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v129        2026-10-05
+     BUILD: v130        2026-10-06
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -635,6 +635,36 @@ body.mobile .dashbar{padding:4px 0 10px;flex-wrap:wrap;justify-content:flex-star
 body.mobile .dashbar .hint{display:none}
 body.mobile .dashbar button{flex:1 1 auto;min-height:38px}
 body.mobile .mcount #mxlsx{flex:none}
+
+@media print{
+  #printroot .dashprint{
+    --surface:#ffffff; --surface2:#f4f6f8; --field:#fff; --ink:#0b0b0b; --ink2:#444; --muted:#6b6b6b;
+    --grid:#d5d9de; --ring:#c3ced9; --shadow:none;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact; color:#0b0b0b; font-size:10px}
+  #printroot .dashprint *{-webkit-print-color-adjust:exact; print-color-adjust:exact; box-shadow:none!important}
+  #printroot .dashprint .dash{padding:0}
+  #printroot .dashprint .kpis{grid-template-columns:repeat(4,1fr)!important;gap:6px;margin-bottom:8px}
+  #printroot .dashprint .kpi{padding:6px 8px;break-inside:avoid}
+  #printroot .dashprint .kpi .v{font-size:19px}
+  #printroot .dashprint .panel{padding:8px 10px;margin-bottom:8px;break-inside:avoid}
+  #printroot .dashprint .panel table{font-size:9px}
+  html body #printroot .dashprint .panel,html body #printroot .dashprint .kpi,
+  html body #printroot .dashprint .tcell{background:#f4f6f8!important;border:1px solid #c3ced9!important;
+    border-radius:8px!important;color:#0b0b0b!important}
+  html body #printroot .dashprint .panel h3,html body #printroot .dashprint .kpi .k{color:#555!important}
+  html body #printroot .dashprint .kpi .v,html body #printroot .dashprint .kpi .p,
+  html body #printroot .dashprint .panel td,html body #printroot .dashprint .panel th,
+  html body #printroot .dashprint .dlab,html body #printroot .dashprint .dn,
+  html body #printroot .dashprint .dp,html body #printroot .dashprint .hint,
+  html body #printroot .dashprint .tk,html body #printroot .dashprint .tv,
+  html body #printroot .dashprint .ts{color:#0b0b0b!important}
+  html body #printroot .dashprint .kpi .bar{background:#dfe4e9!important}
+  html body #printroot .dashprint .blg{background:#fff!important;color:#0b0b0b!important;
+    border:1px solid #c3ced9!important}
+  html body #printroot .dashprint .blg *{color:#0b0b0b!important}
+  html body #printroot .dashprint .blg i{display:inline-block}
+  #printroot .dashprint [data-lstate],#printroot .dashprint [data-go]{cursor:default}
+}
 @media print{
   #printroot .dh2{font-size:10pt;color:#12304f;margin:10pt 0 3pt;break-after:avoid}
   #printroot .dtbl{width:100%;border-collapse:collapse;font-size:8pt;break-inside:auto}
@@ -1674,7 +1704,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-10-05 · v129';
+const BUILD='LOD 2026-10-06 · v130';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -5739,14 +5769,17 @@ function dashModel(w){
 const DASH_FILE=w=>'ARJUM_LOD_Dashboard_'+
   (dashModel(w).scope||'All').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'')+'_'+today;
 function dashReportHTML(w){
-  const m=dashModel(w);
+  /* the dashboard exactly as drawn — figure boxes, bars and charts — not a
+     table. It is copied from the live window, so it can never drift from it. */
+  const m=dashModel(w), dash=w.body.querySelector('.dash');
+  const clone=dash?dash.cloneNode(true):document.createElement('div');
+  clone.querySelectorAll('[id]').forEach(e=>e.removeAttribute('id'));
+  clone.querySelectorAll('button').forEach(b=>{ b.disabled=true; b.removeAttribute('data-lstate'); });
+  clone.querySelectorAll('script').forEach(e=>e.remove());
   return `<div class="rhead"><div><h1>Design deliverables progress — dashboard</h1>
       <div class="rs">${esc(m.scope)}${USER?' · '+esc(USER.name):''}</div></div>
-      <div class="rd">Printed <span>${esc(niceDate(today))}</span><br>${esc(BUILD)}</div></div>`+
-    m.tables.map(t=>`<h2 class="dh2">${esc(t.title)}</h2>
-      <table class="dtbl"><thead><tr>${t.head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
-      <tbody>${t.rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`).join('')+
-    (m.notes.length?`<div class="dnote">${m.notes.map(esc).join('<br>')}</div>`:'');
+      <div class="rd">Printed <span>${esc(niceDate(today))}</span><br>${esc(BUILD)}</div></div>
+    <div class="dashprint">${clone.outerHTML}</div>`;
 }
 function printDash(w,pdf){
   dayRoll();
