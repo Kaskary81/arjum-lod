@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v132        2026-10-06
+     BUILD: v133        2026-10-17
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -1538,7 +1538,7 @@ const STATUSES=['Code A','Deemed','Code B','Under review','Rejected',
   'RNC','RWC','Under AWPT review','Not issued'];
 const CREDIT={'Code A':100,'Deemed':100,'Code B':85,'Under review':50,
   'Rejected':0,'RNC':0,'RWC':0,'Under AWPT review':0,'Not issued':0};
-const STATUS_LONG={'Code A':'Approved — Code A','Deemed':'For information — no reply in 10 working days',
+const STATUS_LONG={'Code A':'Approved — Code A','Deemed':'For information — issued for information',
   'Code B':'Approved with comments — Code B','Under review':'Issued, under review',
   'Rejected':'Rejected','RNC':'AWPT reviewed — no comments',
   'RWC':'AWPT reviewed — with comments',
@@ -1569,7 +1569,7 @@ const MAADEN_GRADE={
   'Code B':   {g:'C', t:'Proceed with exceptions',d:'proceed with exceptions to next submission and revision'},
   'Rejected': {g:'R', t:'Do not proceed',         d:'revise as noted and resubmit'},
   'Replied':  {g:'I', t:'For information',        d:'issued to the Client for information'},
-  'Deemed':   {g:'I', t:'For information',        d:'no reply within 10 working days — taken as issued for information'}};
+  'Deemed':   {g:'I', t:'For information',        d:'issued for information — no reply is awaited'}};
 const maadenLabel=v=>{const m=MAADEN_GRADE[v]; return m?m.g+' — '+m.t:(v||'');};
 /* A document's own status is whatever the last reviewer said, so when that
    reviewer was the Client it must be shown in the Client's words: Maaden stamps
@@ -1715,7 +1715,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-10-06 · v132';
+const BUILD='LOD 2026-10-17 · v133';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -4479,10 +4479,9 @@ function deemedDate(r){
      submission still inside its window, or an IFR one the Client has yet to
      grade, is genuinely waiting — printing a receiving date against it would
      invent a reply nobody is entitled to claim. */
-  if(legState(r,'Maaden')!=='Replied')return '';
-  const sent=legSent(r,'Maaden'); if(!sent)return '';
-  const d=addWorkingDays(sent,WINDOW['IFI']||10);
-  return (d&&d<=today)?d:'';
+  /* IFI RULE (17 Oct 2026): an IFI document is for information on the day it is
+     issued, so there is no deemed receiving date to print — nothing is waited for. */
+  return '';
 }
 function reviewClock(r){
   if(r.status!=='Under review')return null;
@@ -4537,10 +4536,10 @@ function applyDeemed(){
     if(r.status!=='Under review')  continue;
     if(isHold(r))                  continue;
     if(!hasCycle(r,'Maaden'))      continue;
-    const from=r.issuedDate||r.heldSince; if(!from)continue;
-    const used=workingDays(from,today);
-    if(used==null||used<=10)       continue;
-    r._status0=r.status; r.status='Deemed'; r.deemedAuto=true; n++;
+    /* IFI RULE (17 Oct 2026): an IFI document is for information from the day
+       it is issued — it never waits out a window. The database now derives this
+       itself; this overlay only covers a row read before it was re-derived. */
+    r._status0=r.status; r.status='Deemed'; r.holder='Closed'; r.deemedAuto=true; n++;
   }
   return n;
 }
@@ -4604,8 +4603,8 @@ function exportEscalation(){
         <td class="c-targetDate">${esc(c.from)}</td>
         <td class="c-actualSub" style="text-align:center">${c.used} of ${c.limit}${
           c.k==='deemed'?' — deemed':''}</td></tr>`).join('')}</tbody></table>
-    <div class="rfoot">Working days counted Sunday to Thursday. IFI documents with no response within
-      10 working days are taken as issued for information under the agreed procedure. · ${stamp}${
+    <div class="rfoot">Working days counted Sunday to Thursday. IFI documents are issued for information
+      and are not on this clock; only documents waiting for a Maaden grade are. · ${stamp}${
       USER?' · issued by '+esc(USER.name):''}</div>`;
   preparePrint(root);
   document.body.classList.add('printing');
@@ -7370,6 +7369,7 @@ function editHistRow(r,id){
           (sent||'—')+' / '+(resp||'no reply')+' / '+(out||'—'));
         if(MOBILE)mobRender(); else refresh();
         toast((c.rev||'Cycle')+' updated');
+        if(c.leg==='Maaden')offerIFR(r,out);
       }catch(e){ toast('Could not save that cycle'); }
     },'primary']]);
   const enote=()=>{
@@ -7381,6 +7381,8 @@ function editHistRow(r,id){
     let st,hold;
     if(c.leg==='Maaden'){
       st=resp?(out||'Under review'):'Under review';
+      /* IFI RULE: issued for information, with no reply, is already For information */
+      if(!resp&&r.reviewClass==='IFI')st='Deemed';
       hold=['Code A','Code B','Deemed','Replied'].includes(st)?'Closed'
            :st==='Rejected'?'HESCO':'Maaden';
     } else {
@@ -7402,6 +7404,24 @@ function editHistRow(r,id){
   ['ehSent','ehResp','ehOut'].forEach(id=>{
     const e=document.getElementById(id); if(e)e.onchange=enote;});
   enote();
+}
+/* IFI RULE, the other half: an IFI document is issued for information. If
+   Maaden answers it with a status (A, C or R) it has been reviewed, so the
+   document controller moves it to IFR and the status stands. Asked, not done
+   silently, because it changes the document's class. */
+function offerIFR(r,out){
+  if(!r||r.reviewClass!=='IFI'||!['Code A','Code B','Rejected'].includes(out))return;
+  msgBox('Maaden gave a status','',
+    `<b>${esc(r.docNumber||r.ref||'')}</b> is an IFI document and Maaden replied <b>${
+      esc(maadenLabel(out))}</b>. A document that Maaden reviews and grades is an IFR.<br><br>
+     Change its class to IFR? The status stays as Maaden gave it.`,
+    [['Leave as IFI',null,''],['Change to IFR',async()=>{
+      try{ await apiUpdate(r.id,{reviewClass:'IFR'});
+        await logAct('edit',r,'class','IFI','IFR');
+        if(MOBILE)mobRender(); else refresh();
+        toast('Now IFR'); }
+      catch(e){ toast('Could not change the class'); }
+    },'primary']]);
 }
 function removeHistRow(r,id){
   const c=(HIST[r.id]||[]).find(x=>x.id===id); if(!c)return;
@@ -7482,6 +7502,7 @@ function logCycle(r){
     if(leg==='Maaden'){
       holder=resp?(['Code A','Code B','Replied'].includes(out)?'Closed':'HESCO'):'Maaden';
       status=resp?(out||'Under review'):'Under review';
+      if(!resp&&r.reviewClass==='IFI'){ status='Deemed'; holder='Closed'; }  /* IFI RULE */
     } else {
       holder=resp?'HESCO':'AWPT';        // RNC or RWC, it goes back to HESCO
       status=resp?(out||'RWC'):'Under AWPT review';
@@ -7542,6 +7563,7 @@ function logCycle(r){
           Object.assign(r,fresh[0]); }
         if(MOBILE)mobRender(); else refresh();
         toast(rev+' logged — now with '+(r.holder||''));
+        if(leg==='Maaden')offerIFR(r,resp?out:'');
       }catch(e){
         if(e&&e.cur){ Object.assign(r,e.cur);
           msgBox('Someone else changed this document','',
