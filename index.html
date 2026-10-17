@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v133        2026-10-17
+     BUILD: v134        2026-10-17
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -1473,7 +1473,7 @@ tr.pgone td{background:rgba(214,69,69,.07)}
       <button data-a="csv">Export to CSV</button>
       <button data-a="import">Import from Excel…</button>
       <hr>
-      <button data-a="deem">Apply the 10-day rule now</button>
+      <button data-a="deem">Re-check IFI documents now</button>
       <button data-a="bin">Deleted documents…</button>
       <button data-a="activity">Activity log</button>
       <button data-a="users">People</button>
@@ -1715,7 +1715,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-10-17 · v133';
+const BUILD='LOD 2026-10-17 · v134';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2459,23 +2459,13 @@ function cellText(r,c){
     if(c.k==='status'&&isHold(r))
       return statusPill('On hold','On hold',
         (r.holdNote||'Held pending prerequisites')+(r.holdSince?' · since '+r.holdSince:''));
-    if(c.k==='mOut')return statusPill(v,maadenLabel(v), (v==='Replied'&&deemedDate(r))
-      ? 'No Client reply within 10 working days — taken as issued for information under the agreed procedure'
-      : '');
+    if(c.k==='mOut')return statusPill(v,maadenLabel(v),'');
     /* the Everything register mixes both vocabularies — each verdict is shown
        in the words of whoever gave it */
     if(c.k==='status'&&MAADEN_GRADE[v])
       return statusPill(v, maadenLabel(v), 'Maaden code '+MAADEN_GRADE[v].g+
         ' — '+MAADEN_GRADE[v].d);
     return statusPill(v);
-  }
-  /* the reply column: a real date in the ordinary way, otherwise the date the
-     ten working days ran out, in red so nobody reads it as something received */
-  if(c.k==='mBack'&&!v){
-    const d=deemedDate(r);
-    if(d)return '<span class="deemd" title="No reply received. Ten working days from '+
-      esc(legSent(r,'Maaden'))+' — taken as issued for information under the agreed procedure">'+
-      esc(d)+'</span>';
   }
   if(c.k==='title'&&CCOUNT[r.id])
     return esc(v)+'<span class="cbadge" title="'+CCOUNT[r.id]+' comment(s)">'+CCOUNT[r.id]+'</span>';
@@ -4441,9 +4431,8 @@ function exportPlanPDF(planId){
 
 /* ================= review clock =================
    The Client's review window is counted in working days, Sunday to Thursday.
-   An IFI document with no response inside 10 working days is taken as issued
-   for information;
-   IFR carries a 3 working-day target. Both are computed live from the date the
+   An IFI document is for information from the day it is issued and is not on
+   this clock; IFR carries a 3 working-day target. Both are computed live from the date the
    document was issued, so the escalation list writes itself. */
 const WD_START=0, WD_END=4;                 // Sun..Thu are working days
 function workingDays(from,to){
@@ -4455,7 +4444,7 @@ function workingDays(from,to){
   while(d<=b){ const w=d.getDay(); if(w>=WD_START&&w<=WD_END)n++; d.setDate(d.getDate()+1); }
   return n;
 }
-const WINDOW={'IFI':10,'IFR':3,'AWPT-only':3};
+const WINDOW={'IFR':3,'AWPT-only':3};   /* IFI has no window — it is for information from issue */
 /* THE DATE THE RULE PRODUCES. Counted the same way the clock counts — Sunday to
    Thursday, starting the day after the submission — so the tenth working day is
    a date that can be quoted in a letter, not a figure somebody has to work out.
@@ -4496,22 +4485,20 @@ function reviewClock(r){
      would have appeared in the client-facing escalation PDF as taken for information.
      A deeming claim against the Client has to rest on a submission we can show. */
   if(!hasCycle(r,'Maaden'))return null;
+  if(r.reviewClass==='IFI')return null;      /* IFI RULE: for information, never on the clock */
   const from=r.issuedDate||r.heldSince;
   if(!from)return null;
   const used=workingDays(from,today);
   if(used==null)return null;
-  const limit=WINDOW[r.reviewClass]||10;
+  const limit=WINDOW[r.reviewClass]||3;
   const over=used-limit;
   return {used,limit,over,from,
-    k: over>0 ? (r.reviewClass==='IFI'?'deemed':'overdue') : (over>=-1?'due':'ok'),
-    label: over>0 ? (r.reviewClass==='IFI'
-              ? 'Taken as for information — '+over+' wd past the 10-day window'
-              : over+' wd past the '+limit+'-day window')
-            : (limit-used)+' wd left'};
+    k: over>0 ? 'overdue' : (over>=-1?'due':'ok'),
+    label: over>0 ? over+' wd past the '+limit+'-day window' : (limit-used)+' wd left'};
 }
 /* THE DEEMING RULE, APPLIED — not merely displayed.
-   An IFI document with no Client reply inside 10 working days is deemed
-   acknowledged under the agreed procedure. reviewClock() has always SHOWN this
+   IFI RULE (17 Oct 2026): an IFI document is for information from the day it
+   is issued; there is no waiting period. reviewClock() has always SHOWN this
    on the clock page, but the document's own status stayed "Under review", so
    the register, the cards, the credit and every report still counted it as
    sitting with the Client. This closes that gap.
@@ -4534,8 +4521,7 @@ function applyDeemed(){
   for(const r of AB){
     if(r.reviewClass!=='IFI')      continue; /* IFR is never deemed — it needs a real code */
     if(r.status!=='Under review')  continue;
-    if(isHold(r))                  continue;
-    if(!hasCycle(r,'Maaden'))      continue;
+    if(!hasCycle(r,'Maaden'))      continue; /* the rule has no hold exception, same as the database */
     /* IFI RULE (17 Oct 2026): an IFI document is for information from the day
        it is issued — it never waits out a window. The database now derives this
        itself; this overlay only covers a row read before it was re-derived. */
@@ -4573,7 +4559,7 @@ function clockHTML(){
     </tbody></table>
     ${rows.length>25?`<div class="hint" style="margin-top:7px">Showing 25 of ${rows.length}.</div>`:''}
     <div class="hint" style="margin-top:8px">Working days counted Sunday to Thursday, from the day after issue.
-      IFI is taken as issued for information after 10; IFR carries a 3-day target.</div>${warn}</div>`;
+      IFI is for information from issue and is not on this clock; IFR carries a 3-day target.</div>${warn}</div>`;
 }
 function wireClock(root){
   root.querySelectorAll('[data-go]').forEach(el=>el.onclick=()=>{
@@ -4637,14 +4623,14 @@ async function takeSnapshot(){
    document it changes is logged to the activity trail under the rule's name. */
 async function runDeemSweep(){
   if(!canEdit())return toast('Your account cannot apply the rule');
-  toast('Checking the 10 working day window…');
+  toast('Re-checking IFI documents…');
   try{
     const n=await api('rpc/lod_deem_sweep',{method:'POST',
       headers:{'Content-Type':'application/json'},body:'{}'});
     const c=(typeof n==='number')?n:(Array.isArray(n)?n.length:0);
     if(c>0){ await loadData(); refresh(); }
-    toast(c===0 ? 'Nothing has passed 10 working days without a reply'
-       : c+' document'+(c===1?'':'s')+' taken as for information');
+    toast(c===0 ? 'Every IFI document already reads For information'
+       : c+' document'+(c===1?'':'s')+' set to For information');
   }catch(e){ toast('Could not apply the rule — '+(e&&e.message?'the database refused it':'no connection')); }
 }
 function trendHTML(){
@@ -4984,7 +4970,7 @@ function classChart(){
     <div class="drow"><div class="dlab" title="${esc(LABEL[x.c]||x.c)}">${esc(x.c)}</div>
       <div class="dtrack"><div class="dbar" style="width:${x.pct}%;background:var(--accent)"></div></div>
       <div class="dn">${x.pct}%</div><div class="dp">${x.scored} doc${x.scored===1?'':'s'}</div></div>`).join('')}
-    <div class="hint" style="margin-top:8px">IFI is measured on the 10 working-day deemed-approval rule;
+    <div class="hint" style="margin-top:8px">IFI documents are for information from issue;
       AWPT-only documents are measured on AWPT's review, not the Client's.</div></div>`;
 }
 function ballChart(){
@@ -7315,7 +7301,7 @@ const outcomeLabel=(leg,v)=>!v?'— no reply yet —'
   :((leg==='Maaden'||leg==='maaden')&&MAADEN_GRADE[v]?maadenLabel(v):v);
 const OUTCOME_HINT={
   HESCO:'RNC — AWPT reviewed with no comments; HESCO prepares the submittal to Maaden. RWC — returned to HESCO with comments.',
-  Maaden:'A — accepted · C — proceed with exceptions to the next submission and revision · R — do not proceed, revise as noted and resubmit · I — issued for information. A is also applied automatically 10 working days after an IFI submission with no reply.'
+  Maaden:'A — accepted · C — proceed with exceptions to the next submission and revision · R — do not proceed, revise as noted and resubmit · I — issued for information. An IFI document is for information until Maaden gives A, C or R, which makes it an IFR.'
 };
 function editHistRow(r,id){
   if(!canEdit())return toast('Your account cannot edit');
@@ -7382,7 +7368,7 @@ function editHistRow(r,id){
     if(c.leg==='Maaden'){
       st=resp?(out||'Under review'):'Under review';
       /* IFI RULE: issued for information, with no reply, is already For information */
-      if(!resp&&r.reviewClass==='IFI')st='Deemed';
+      if(r.reviewClass==='IFI'&&!out)st='Deemed';   /* with or without a reply date */
       hold=['Code A','Code B','Deemed','Replied'].includes(st)?'Closed'
            :st==='Rejected'?'HESCO':'Maaden';
     } else {
@@ -7417,7 +7403,7 @@ function offerIFR(r,out){
      Change its class to IFR? The status stays as Maaden gave it.`,
     [['Leave as IFI',null,''],['Change to IFR',async()=>{
       try{ await apiUpdate(r.id,{reviewClass:'IFR'});
-        await logAct('edit',r,'class','IFI','IFR');
+        await logAct('edit',r,'class','IFI','IFR'); await loadData();
         if(MOBILE)mobRender(); else refresh();
         toast('Now IFR'); }
       catch(e){ toast('Could not change the class'); }
@@ -7502,7 +7488,7 @@ function logCycle(r){
     if(leg==='Maaden'){
       holder=resp?(['Code A','Code B','Replied'].includes(out)?'Closed':'HESCO'):'Maaden';
       status=resp?(out||'Under review'):'Under review';
-      if(!resp&&r.reviewClass==='IFI'){ status='Deemed'; holder='Closed'; }  /* IFI RULE */
+      if(r.reviewClass==='IFI'&&!out){ status='Deemed'; holder='Closed'; }  /* IFI RULE */
     } else {
       holder=resp?'HESCO':'AWPT';        // RNC or RWC, it goes back to HESCO
       status=resp?(out||'RWC'):'Under AWPT review';
