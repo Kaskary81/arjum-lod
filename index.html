@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================
      LOD Tracker  ·  Taif Ar Rjum Package B
-     BUILD: v134        2026-10-17
+     BUILD: v135        2026-10-29
      ==========================================================
      Put here on purpose. GitHub's file preview shows the first
      lines of a file, so the version can be confirmed from the
@@ -1715,7 +1715,7 @@ window.addEventListener('focus',dayRoll);
    carry the revision and the age as well. */
 const SHORT_DISC={Mechanical:'MECH',Electric:'ELEC',Structural:'STRUCT',
   'Project Management':'PM','ICT/Mech':'ICT/MECH','Mech/ELC':'MECH/ELEC'};
-const BUILD='LOD 2026-10-17 · v134';
+const BUILD='LOD 2026-10-29 · v135';
 const SNAPSHOT=[];
 
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -7240,9 +7240,24 @@ async function loadLegs(){
     LEGOK=true;
   }catch(e){ LEGOK=false; }
 }
+/* THE SERVER ANSWERS AT MOST 1000 ROWS A REQUEST, WHATEVER limit= SAYS. The
+   history table passed 1000 cycles on 18 Oct; the register asked for 5000, got
+   1000, and the last seven — in this ordering the highest Maaden revisions,
+   A05 and A06 of four documents — silently never arrived. Read it in pages. */
+async function apiPaged(path,page){
+  page=page||1000; let out=[], off=0;
+  for(;;){
+    const rows=await api(path+(path.includes('?')?'&':'?')+'limit='+page+'&offset='+off);
+    if(!Array.isArray(rows))break;
+    out=out.concat(rows);
+    if(rows.length<page||off>100000)break;
+    off+=page;
+  }
+  return out;
+}
 async function loadRevs(){
   try{
-    const h=await api('lod_history?order=leg.asc,rev.asc,submitted.asc&limit=5000');
+    const h=await apiPaged('lod_history?order=leg.asc,rev.asc,submitted.asc,id.asc');
     HIST={}; h.forEach(x=>{ (HIST[x.docId]=HIST[x.docId]||[]).push(x); });
   }catch(e){ HIST={}; }
 }
@@ -7267,7 +7282,7 @@ async function loadRevsFor(id){
 }
 async function _oldLoadRevs(){
   try{
-    const r=await api('lod_revisions?order=id.asc&limit=5000');
+    const r=await apiPaged('lod_revisions?order=id.asc');
     REVS={}; r.forEach(x=>{ (REVS[x.docId]=REVS[x.docId]||[]).push(x); });
   }catch(e){ REVS={}; }
 }
